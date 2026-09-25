@@ -67,7 +67,7 @@
       viewEl.innerHTML = Router.render(step, d);
     }
 
-    stepsEl.innerHTML = R.stepsNav(global.ST.step, global.ST_VIEW === "history" ? null : Store.getDesign(Store.currentId()));
+    stepsEl.innerHTML = R.tabbar(global.ST_VIEW === "history" ? "word" : global.ST.step);
   }
   global.__render = render;
 
@@ -95,8 +95,9 @@
 
     // 4) 点遮罩关闭
     sheetEl.addEventListener("click", function (ev) {
-      if (ev.target === sheetEl) sheetEl.hidden = true;
+      if (ev.target === sheetEl) sheetEl.classList.remove("open");
     });
+    Actions.bind(sheetEl, sheetEl);
 
     // 5) 设置表单提交：只绑一次
     form.addEventListener("submit", function (ev) {
@@ -106,7 +107,7 @@
         key:   document.getElementById("in-key").value.trim(),
         model: document.getElementById("in-model").value.trim()
       });
-      sheetEl.hidden = true;
+      sheetEl.classList.remove("open");
       render();
       Actions.toast(AI.mode() === "real" ? "接口已保存（真实模式）" : "演示模式");
     });
