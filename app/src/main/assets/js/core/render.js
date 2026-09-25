@@ -155,71 +155,40 @@
   /* 4 查重 */
   function vCheck(d) {
     var c = d.check;
-    var body = '<div class="block">' + menu("check", "查重", "先看有没有一样的") +
-      menu("buy", "采购", "买料，看实物") + menu("look", "组合", "拼起来是什么样") + "</div>";
+    var body = '<div class="block">' + menu("check", "查重", "打开官方搜索并记录结果") + menu("buy", "采购", "买料，看实物") + menu("look", "组合", "拼起来是什么样") + "</div>";
     if (!c) {
-      body += '<div class="block"><h2>查重</h2>' +
-        '<p class="hint">扫描五个平台的相似款，最高相似度低于 70% 才算原创。</p>' +
-        '<button type="button" class="btn primary wide" data-act="run-check">开始查重</button></div>';
+      body += '<div class="block"><h2>查重</h2><p class="hint">生成五个平台的官方搜索入口。结果由你查看后选择，不会自动抓取。</p><button type="button" class="btn primary wide" data-act="run-check">生成搜索入口</button></div>';
     } else {
-      body += '<div class="block"><h2>结果</h2><div class="scroll-x"><table><thead><tr>' +
-        "<th>平台</th><th>相似款</th><th>最高</th><th>判定</th></tr></thead><tbody>" +
-        c.results.map(function (r) {
-          var cls = r.verdict === "原创" ? "ok" : (r.verdict === "相近" ? "warn" : "bad");
-          return '<tr><td><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.platform) + "</a></td>" +
-            '<td class="num">' + r.hits + '</td><td class="num">' + r.maxSim + "%</td>" +
-            '<td><span class="tag ' + cls + '">' + esc(r.verdict) + "</span></td></tr>";
-        }).join("") + "</tbody></table></div>" +
-        '<p class="note">' + esc(c.worst.note) + "</p>" +
-        '<p class="hint">演示数据，不是平台实时结果。</p></div>';
-
-      if (d.markedOriginal) {
-        body += '<div class="block" style="text-align:center"><span class="origil">原创</span>' +
-          nextBtn("buy", "下一步 · 采购") + "</div>";
-      } else if (c.pass) {
-        body += '<div class="block"><h2>原创确认</h2>' +
-          '<p class="hint">没有雷同款，可以标原创。</p>' +
-          '<button type="button" class="btn ok wide" data-act="mark-original">标为原创</button></div>';
-      } else {
-        body += '<div class="block"><h2>需要修改</h2>' +
-          '<p class="hint">有雷同款，建议改主色或廓形后重新查重。</p>' +
-          '<button type="button" class="btn bad wide" data-act="reject-original">回设计词改款</button></div>';
-      }
+      body += '<div class="block"><h2>搜索词</h2><p>' + esc(c.keyword) + '</p><div class="stack">' + c.results.map(function (r, index) {
+        return '<div class="block"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.platform) + ' 官方搜索</a><div class="actions">' + ["原创", "相近", "雷同"].map(function (name) {
+          return '<button type="button" class="btn small' + (r.verdict === name ? " primary" : "") + '" data-act="set-check" data-index="' + index + '" data-value="' + name + '">' + name + "</button>";
+        }).join("") + "</div></div>";
+      }).join("") + "</div></div>";
+      var done = c.results.every(function (r) { return r.verdict; });
+      var duplicated = c.results.some(function (r) { return r.verdict === "雷同"; });
+      if (d.markedOriginal) body += '<div class="block" style="text-align:center"><span class="origil">原创</span>' + nextBtn("buy", "下一步 · 采购") + "</div>";
+      else if (done && !duplicated) body += '<div class="block"><h2>原创确认</h2><p class="hint">五个平台都没有选择雷同。</p><button type="button" class="btn ok wide" data-act="mark-original">标为原创</button></div>';
+      else if (done) body += '<div class="block"><h2>不能标原创</h2><p class="hint">至少有一个平台选择了雷同。</p><button type="button" class="btn bad wide" data-act="reject-original">回设计词改款</button></div>';
+      else body += '<div class="block"><p class="hint">五个平台都选择后才能判断。</p></div>';
     }
     return screen("check", "查重", "第 4 步，共 9 步", body);
   }
 
   /* 5 采购 */
   function vBuy(d) {
-    var s = d.sourcing;
+    var list = d.sourcing || [];
     var body = "";
-    if (!s) {
-      body += '<div class="block"><h2>采购</h2>' +
-        '<p class="hint">先标原创，再拉采购清单。</p>' +
-        '<button type="button" class="btn primary wide" data-act="run-sourcing">拉清单</button></div>';
+    if (!list.length) {
+      body += '<div class="block"><h2>采购</h2><p class="hint">先标原创，再生成官方搜索入口。</p><button type="button" class="btn primary wide" data-act="run-sourcing">生成采购入口</button></div>';
     } else {
-      body += '<div class="block"><h2>清单</h2><div class="scroll-x"><table><thead><tr>' +
-        "<th>零件</th><th>渠道</th><th>单价</th><th>省</th></tr></thead><tbody>" +
-        s.map(function (r) {
-          var row = d.bom ? d.bom.rows.filter(function (x) { return x.part === r.part; })[0] : null;
-          var save = row ? row.subtotal - r.priceBest * r.amount : 0;
-          return "<tr><td>" + esc(r.part) + '<div class="muted" style="font-size:11px">' +
-            esc(r.material) + " ×" + r.amount + esc(r.unit) + "</div></td>" +
-            '<td><a href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.channel) + "</a>" +
-            '<div class="muted" style="font-size:11px">备选 ' + esc(r.alt) + "</div></td>" +
-            '<td class="num">' + money(r.priceBest) + "</td>" +
-            '<td class="num ok">' + money(save) + "</td></tr>";
-        }).join("") + "</tbody></table></div></div>";
-
-      body += '<div class="block"><h2>实物参考</h2><div class="grid2">' +
-        [["主裙身", "dress"], ["裙撑", "detail"], ["袖口", "look"], ["蝴蝶结", "combo"]].map(function (x) {
-          return "<div><img class=\"card-img sq\" src=\"" +
-            esc(AI.img(x[1], x[0] + (d.bom ? d.bom.words.color : ""), 200, 200)) +
-            '" alt="' + esc(x[0]) + '"><p class="caption">' + esc(x[0]) + "</p></div>";
-        }).join("") + "</div>" +
-        '<p class="hint">演示图，实物以平台页面为准。</p></div>';
-
-      body += nextBtn("look", "下一步 · 组合");
+      body += list.map(function (item, index) {
+        return '<div class="block"><h2>' + esc(item.part) + '</h2><p class="hint">' + esc(item.material) + " × " + item.amount + esc(item.unit) + '</p><div class="actions">' + item.links.map(function (link) {
+          return '<a class="btn small" href="' + esc(link.url) + '" target="_blank" rel="noopener">' + esc(link.name) + "</a>";
+        }).join("") + '</div><label>真实单价（元）</label><input data-act="set-price" data-index="' + index + '" inputmode="decimal" value="' + (item.price == null ? "" : esc(item.price)) + '" placeholder="查看后填写">' + (item.price == null ? '<p class="hint">未填写</p>' : '<p class="hint">小计 ' + money(item.price * item.amount) + "</p>") + "</div>";
+      }).join("");
+      var complete = list.every(function (item) { return typeof item.price === "number" && item.price >= 0; });
+      var total = list.reduce(function (sum, item) { return sum + (item.price || 0) * item.amount; }, 0);
+      body += '<div class="block"><h2>采购合计</h2><div class="price">' + (complete ? money(total) : "待填写") + '</div><p class="hint">只统计你填写的真实价格。</p>' + (complete ? nextBtn("look", "下一步 · 组合") : "") + "</div>";
     }
     return screen("buy", "采购", "第 5 步，共 9 步", body);
   }
@@ -275,28 +244,19 @@
 
   /* 8 工厂 */
   function vFact(d) {
-    var list = d.factories;
+    var data = d.factories;
     var body = "";
-    if (!list) {
-      body += '<div class="block"><h2>工厂</h2>' +
-        '<p class="hint">先完成模特图，再找工厂。</p>' +
-        '<button type="button" class="btn primary wide" data-act="run-factories">查找工厂</button></div>';
+    if (!data) {
+      body += '<div class="block"><h2>工厂</h2><p class="hint">生成官方搜索入口。看到真实工厂后手动记录。</p><button type="button" class="btn primary wide" data-act="run-factories">生成工厂搜索</button></div>';
     } else {
-      body += '<div class="block"><h2>候选</h2>' +
-        list.slice().sort(function (a, b) { return a.unitCost - b.unitCost; }).map(function (f, i) {
-          var picked = d.pickedFactory && d.pickedFactory.name === f.name;
-          return '<div class="hr"></div>' +
-            '<div class="row between"><strong>' + esc(f.name) + "</strong>" +
-            '<span class="price" style="font-size:17px">' + money(f.unitCost) + '<small>/件</small></span></div>' +
-            '<p class="hint">' + esc(f.region) + " · " + esc(f.scale) + " · 起订 " + f.min + " 件 · " + esc(f.leadTime) + "</p>" +
-            '<div style="margin-top:8px">' + f.tags.map(function (t) { return '<span class="tag plain">' + esc(t) + "</span>"; }).join("") + "</div>" +
-            '<div class="actions">' +
-            '<button type="button" class="btn small" data-act="call-fact" data-idx="' + list.indexOf(f) + '">联系电话</button>' +
-            '<button type="button" class="btn small ' + (picked ? "primary" : "") + '" data-act="pick-fact" data-idx="' +
-            list.indexOf(f) + '">' + (picked ? "已选择" : "选这家") + "</button>" +
-            '<a class="btn small" href="' + esc(f.link) + '" target="_blank" rel="noopener">1688</a></div>';
-        }).join("") +
-        '<p class="hint">演示数据，联系方式未核实。</p></div>';
+      body += '<div class="block"><h2>搜索</h2><p>' + esc(data.keyword) + '</p><div class="actions">' + data.links.map(function (link) {
+        return '<a class="btn small" href="' + esc(link.url) + '" target="_blank" rel="noopener">' + esc(link.name) + "</a>";
+      }).join("") + "</div></div>";
+      body += '<div class="block"><h2>记录真实工厂</h2><input id="factory-name" placeholder="工厂名称"><input id="factory-region" placeholder="地区"><input id="factory-contact" placeholder="联系方式"><input id="factory-min" inputmode="numeric" placeholder="起订量"><input id="factory-cost" inputmode="decimal" placeholder="加工单价（元）"><button type="button" class="btn primary wide" data-act="add-factory">添加记录</button></div>';
+      body += '<div class="block"><h2>已记录</h2>' + (data.records.length ? data.records.map(function (item, index) {
+        var picked = d.pickedFactory && d.pickedFactory.name === item.name;
+        return '<div class="hr"></div><strong>' + esc(item.name) + '</strong><p class="hint">' + esc(item.region) + " · " + esc(item.contact) + " · 起订 " + item.min + " 件 · " + money(item.unitCost) + '/件</p><button type="button" class="btn small' + (picked ? " primary" : "") + '" data-act="pick-fact" data-idx="' + index + '">' + (picked ? "已选择" : "选这家") + "</button>";
+      }).join("") : '<p class="hint">还没有记录。</p>') + "</div>";
       if (d.pickedFactory) body += nextBtn("cost", "下一步 · 成本");
     }
     return screen("fact", "工厂", "第 8 步，共 9 步", body);
@@ -305,41 +265,10 @@
   /* 9 成本 */
   function vCost(d) {
     var f = d.finance;
-    var body = "";
-    if (!f) {
-      body += '<div class="block"><h2>成本</h2>' +
-        '<p class="hint">先在工厂页选一家。</p>' +
-        '<button type="button" class="btn primary wide" data-act="run-finance">开始计算</button></div>';
-    } else {
-      var rec = f.tiers[1] || f.tiers[0];
-      body += '<div class="block"><h2>单件成本</h2>' +
-        '<div class="kv"><span>面料辅料</span><span>' + money(f.materialCost) + "</span></div>" +
-        '<div class="kv"><span>工时</span><span>' + money(f.laborPerUnit) + "</span></div>" +
-        '<div class="kv"><span>固定成本（按量摊）</span><span>' + money(f.fixedPerUnit) + "</span></div>" +
-        '<div class="kv"><span>合作工厂</span><span>' + esc(d.pickedFactory ? d.pickedFactory.name : "未选") + "</span></div></div>";
-
-      body += '<div class="block"><h2>不同起订量</h2><div class="scroll-x"><table><thead><tr>' +
-        "<th>量</th><th>成本</th><th>淘宝</th><th>拼多多</th><th>毛利</th></tr></thead><tbody>" +
-        f.tiers.map(function (t) {
-          return '<tr><td class="num">' + t.qty + "</td>" +
-            '<td class="num">' + money(t.costPerUnit) + "</td>" +
-            '<td class="num">' + money(t.retailTb) + "</td>" +
-            '<td class="num">' + money(t.retailPdd) + "</td>" +
-            '<td class="num ok">' + money(t.profitTb) + "</td></tr>";
-        }).join("") + "</tbody></table></div></div>";
-
-      body += '<div class="block"><h2>收入与支出（' + rec.qty + " 件档）</h2>" +
-        '<div class="price">' + money(rec.profitTb) + "<small> / 件毛利</small></div>" +
-        '<div class="hr"></div>' +
-        '<div class="kv"><span>售价（淘宝）</span><span>' + money(rec.retailTb) + "</span></div>" +
-        '<div class="kv"><span>平台佣金</span><span class="bad">-' + money(rec.fee) + "</span></div>" +
-        '<div class="kv"><span>快递</span><span class="bad">-' + money(rec.ship) + "</span></div>" +
-        '<div class="kv"><span>包装</span><span class="bad">-' + money(rec.pack) + "</span></div>" +
-        '<div class="kv"><span>生产成本</span><span class="bad">-' + money(rec.costPerUnit) + "</span></div>" +
-        '<div class="kv"><span>毛利率</span><span>' + rec.marginTb + "%</span></div>" +
-        '<div class="kv"><span>总毛利</span><span>' + money(rec.grossTb) + "</span></div>" +
-        '<p class="note">演示测算，实际以工厂报价为准。</p></div>';
-    }
+    var material = (d.sourcing || []).reduce(function (sum, item) { return sum + (Number(item.price) || 0) * Number(item.amount || 0); }, 0);
+    var labor = d.pickedFactory ? Number(d.pickedFactory.unitCost) : 0;
+    var body = '<div class="block"><h2>已知成本</h2><div class="kv"><span>物料</span><span>' + money(material) + '</span></div><div class="kv"><span>工厂加工</span><span>' + money(labor) + '</span></div></div><div class="block"><h2>填写真实费用</h2><input id="cost-price" inputmode="decimal" placeholder="单件售价"><input id="cost-fee" inputmode="decimal" placeholder="平台佣金百分比"><input id="cost-ship" inputmode="decimal" placeholder="单件快递"><input id="cost-pack" inputmode="decimal" placeholder="单件包装"><input id="cost-fixed" inputmode="decimal" placeholder="固定费用总额"><input id="cost-qty" inputmode="numeric" placeholder="生产数量"><button type="button" class="btn primary wide" data-act="run-finance">计算</button></div>';
+    if (f && !f.error) body += '<div class="block"><h2>结果</h2><div class="price">' + money(f.profit) + '<small> / 件利润</small></div><div class="hr"></div><div class="kv"><span>收入</span><span>' + money(f.income) + '</span></div><div class="kv"><span>生产成本</span><span class="bad">-' + money(f.cost * f.qty) + '</span></div><div class="kv"><span>平台佣金</span><span class="bad">-' + money(f.fee * f.qty) + '</span></div><div class="kv"><span>快递包装</span><span class="bad">-' + money((f.shipping + f.pack) * f.qty) + '</span></div><div class="kv"><span>总利润</span><span>' + money(f.totalProfit) + '</span></div><div class="kv"><span>利润率</span><span>' + f.margin.toFixed(1) + '%</span></div></div>';
     return screen("cost", "成本", "第 9 步，共 9 步", body);
   }
 
