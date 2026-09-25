@@ -4,6 +4,18 @@
 (function (global) {
   "use strict";
 
+    function report(msg) {
+      var box = document.getElementById("error-box");
+      if (!box) {
+        box = document.createElement("div");
+        box.id = "error-box";
+        box.style.cssText = "position:fixed;left:12px;right:12px;top:12px;z-index:80;padding:12px;border-radius:10px;background:#3a1717;color:#ffd7d7;font-size:13px;line-height:1.5";
+        document.body.appendChild(box);
+      }
+      box.textContent = "错误：" + msg;
+      box.addEventListener("click", function () { box.remove(); }, { once: true });
+    }
+
   function toast(msg) {
     var t = document.getElementById("toast");
     if (!t) return;
@@ -29,27 +41,37 @@
 
   var ACT = {};
 
-  ACT["gen-words"] = function () {
-    var ta = document.getElementById("in-prompt");
-    var prompt = ta ? ta.value.trim() : "";
-    if (!prompt) { toast("先写一句设计需求"); return; }
-    var d = cur();
-    if (!d) { toast("请先从「历史」里选一条或新建"); return; }
-    Store.setCurrentId(d.id);
-    var w = Factory.designWords(prompt);
-    patch("生成设计词", { prompt: prompt, words: w });
-    toast(AI.mode() === "real" ? "AI 生成完成" : "演示模式：本地生成完成");
-  };
+    ACT["gen-words"] = async function () {
+      var ta = document.getElementById("in-prompt");
+      var prompt = ta ? ta.value.trim() : "";
+      if (!prompt) { toast("先写一句设计需求"); return; }
+      var d = cur();
+      if (!d) { toast("请先从历史里选一条或新建"); return; }
+      Store.setCurrentId(d.id);
+      if (AI.mode() !== "real") {
+        patch("演示设计词", { prompt: prompt, words: Factory.designWords(prompt), wordsSource: "demo" });
+        toast("演示模式：本地生成");
+        return;
+      }
+      toast("正在调用文本接口");
+      var reply = await AI.chat(prompt, { system: "你是洛丽塔服装设计助手。只返回 JSON，不要 Markdown。字段：style、season、mainFabric、color、details、decors、sizes、mood。三个数组字段必须是字符串数组。" });
+      if (reply && reply.__error) { report(reply.__error); return; }
+      var parsed;
+      try { parsed = JSON.parse(String(reply).replace(/^```json\s*|```$/g, "").trim()); }
+      catch (e) { report("接口返回不是有效 JSON：" + reply); return; }
+      var words = { prompt: prompt, style: String(parsed.style || ""), season: String(parsed.season || ""), mainFabric: String(parsed.mainFabric || ""), color: String(parsed.color || ""), details: Array.isArray(parsed.details) ? parsed.details.map(String) : [], decors: Array.isArray(parsed.decors) ? parsed.decors.map(String) : [], sizes: Array.isArray(parsed.sizes) ? parsed.sizes.map(String) : [], mood: String(parsed.mood || "") };
+      if (!words.style || !words.color || !words.mainFabric || !words.details.length) { report("接口结果缺少必要字段"); return; }
+      patch("真实设计词", { prompt: prompt, words: words, wordsSource: "ai" });
+      toast("文本接口生成完成");
+    };
 
-  ACT["gen-img"] = function () {
-    var d = cur();
-    if (!d) return;
-    if (!d.words) { toast("先生成设计词"); return; }
-    var seed = d.words.color + d.words.style + Date.now();
-    var uri = AI.img("dress", seed, 360, 480);
-    patch("生成图", { imgUri: uri, imgPassed: false });
-    toast(AI.mode() === "real" ? "AI 出图完成" : "演示模式：本地出图");
-  };
+  async function makeImage(kind, prompt, save){
+    if(AI.imageMode()!=="real"){ var d=cur(); save(AI.img(kind, Date.now(), 360, 480), "demo"); toast("演示图"); return; }
+    toast("正在调用图片接口"); var result=await AI.image(prompt);
+    if(result.__error){ report(result.__error); return; } save(result.uri, "ai"); toast("图片生成完成");
+  }
+  ACT["gen-img"] = function () { var d=cur(); if(!d||!d.words){ toast("先生成设计词"); return; } var w=d.words; makeImage("dress","洛丽塔服装平铺图，"+w.color+"，"+w.style+"，"+w.mainFabric+"，细节："+w.details.join("、"), function(uri,source){ patch("生成图",{imgUri:uri,imgPassed:false,imgSource:source}); }); };
+
 
   ACT["pass-img"] = function () { patch("通过图", { imgPassed: true }); toast("已通过，去拆件"); };
   ACT["reject-img"] = function () { patch("驳回图", { imgUri: null, imgPassed: false }); };
@@ -60,11 +82,22 @@
     patch("生成 BOM", { bom: Factory.bom(d.words) });
   };
 
-  ACT["run-check"] = function () {
-    var d = cur();
-    if (!d || !d.bom) { toast("先生成 BOM"); return; }
-    patch("查重", { check: Factory.dedup(d.bom.words) });
-  };
+    ACT["run-check"] = function () {
+      var d = cur();
+      if (!d || !d.words) { toast("先生成设计词"); return; }
+      patch("生成查重入口", { check: Factory.dedup(d.words), markedOriginal: false });
+    };
+    ACT["set-check"] = function (el) {
+      var d = cur();
+      if (!d || !d.check) return;
+      var index = Number(el.getAttribute("data-index"));
+      var value = el.getAttribute("data-value");
+      if (!d.check.results[index] || ["原创", "相近", "雷同"].indexOf(value) < 0) { report("查重选项无效"); return; }
+      var check = JSON.parse(JSON.stringify(d.check));
+      check.results[index].verdict = value;
+      check.pass = check.results.every(function (item) { return item.verdict && item.verdict !== "雷同"; });
+      patch("记录查重", { check: check, markedOriginal: false });
+    };
 
   ACT["mark-original"] = function () {
     var d = cur();
@@ -79,60 +112,80 @@
     toast("回设计词改主色/廓形");
   };
 
-  ACT["run-sourcing"] = function () {
-    var d = cur();
-    if (!d || !d.markedOriginal) { toast("先标原创"); return; }
-    patch("拉采购", { sourcing: Factory.sourcing(d.bom) });
-  };
+    ACT["run-sourcing"] = function () {
+      var d = cur();
+      if (!d || !d.markedOriginal || !d.bom) { toast("先标原创并完成拆件"); return; }
+      patch("生成采购入口", { sourcing: Factory.sourcing(d.bom) });
+    };
+    ACT["set-price"] = function (el) {
+      var d = cur();
+      if (!d || !d.sourcing) return;
+      var index = Number(el.getAttribute("data-index"));
+      var value = el.value.trim();
+      var price = value === "" ? null : Number(value);
+      if (price !== null && (!isFinite(price) || price < 0)) { report("单价必须是非负数字"); return; }
+      var sourcing = JSON.parse(JSON.stringify(d.sourcing));
+      if (!sourcing[index]) { report("采购项目不存在"); return; }
+      sourcing[index].price = price;
+      patch("记录真实单价", { sourcing: sourcing });
+    };
 
-  ACT["gen-combo"] = function () {
-    var d = cur();
-    if (!d || !d.sourcing) { toast("先完成采购"); return; }
-    patch("合成组合", { combo: Factory.combo(d.bom) });
-  };
+  ACT["gen-combo"] = function () { var d=cur(); if(!d||!d.sourcing||!d.words){ toast("先完成采购"); return; } var w=d.words; makeImage("combo","洛丽塔服装组合平铺图，展示"+w.color+w.style+"主裙、裙撑、蝴蝶结和蕾丝", function(uri,source){ patch("合成组合",{combo:{uri:uri,note:source==="ai"?"图片接口生成":"演示图",source:source}}); }); };
 
-  ACT["gen-model"] = function () {
-    var d = cur();
-    if (!d || !d.combo) { toast("先完成组合"); return; }
-    patch("生成模特", { model: Factory.model(d.bom) });
-  };
 
-  ACT["run-factories"] = function () {
-    var d = cur();
-    if (!d || !d.model) { toast("先生成模特图"); return; }
-    patch("搜工厂", { factories: Factory.factories(d.bom) });
-  };
+  ACT["gen-model"] = function () { var d=cur(); if(!d||!d.combo||!d.words){ toast("先完成组合"); return; } var w=d.words; makeImage("model","模特穿着"+w.color+w.style+"洛丽塔裙，正面全身，服装细节清晰", function(uri,source){ patch("生成模特",{model:{uri:uri,note:source==="ai"?"图片接口生成":"演示图",source:source}}); }); };
 
-  ACT["pick-fact"] = function (el) {
-    var d = cur();
-    if (!d || !d.factories) return;
-    var i = parseInt(el.getAttribute("data-idx"), 10);
-    var f = d.factories[i];
-    if (!f) return;
-    patch("选工厂", { pickedFactory: f });
-    toast("已选：" + f.name);
-  };
-  ACT["call-fact"] = function (el) {
-    var d = cur();
-    if (!d || !d.factories) return;
-    var i = parseInt(el.getAttribute("data-idx"), 10);
-    var f = d.factories[i];
-    if (!f) return;
-    toast("联系：" + f.name + " · " + f.contact);
-  };
 
-  ACT["run-finance"] = function () {
-    var d = cur();
-    if (!d || !d.pickedFactory) { toast("先选工厂"); return; }
-    patch("算成本", { finance: Factory.finance(d.bom, d.factories, [50, 100, 200, 500]) });
-  };
+    ACT["run-factories"] = function () {
+      var d = cur();
+      if (!d || !d.model) { toast("先生成模特图"); return; }
+      patch("生成工厂搜索", { factories: Factory.factories(), pickedFactory: null });
+    };
+    ACT["add-factory"] = function () {
+      var d = cur();
+      if (!d || !d.factories) { toast("先生成工厂搜索"); return; }
+      var name = document.getElementById("factory-name").value.trim();
+      var region = document.getElementById("factory-region").value.trim();
+      var contact = document.getElementById("factory-contact").value.trim();
+      var min = Number(document.getElementById("factory-min").value);
+      var unitCost = Number(document.getElementById("factory-cost").value);
+      if (!name || !region || !contact || !isFinite(min) || min <= 0 || !isFinite(unitCost) || unitCost <= 0) { report("工厂名称、地区、联系方式、起订量和单价都要填写"); return; }
+      var data = JSON.parse(JSON.stringify(d.factories));
+      data.records.push({ name: name, region: region, contact: contact, min: min, unitCost: unitCost });
+      patch("记录工厂", { factories: data });
+      toast("工厂已记录");
+    };
+    ACT["pick-fact"] = function (el) {
+      var d = cur();
+      var index = Number(el.getAttribute("data-idx"));
+      var item = d && d.factories && d.factories.records[index];
+      if (!item) { report("工厂记录不存在"); return; }
+      patch("选择工厂", { pickedFactory: item });
+    };
+
+    ACT["run-finance"] = function () {
+      var d = cur();
+      if (!d || !d.pickedFactory || !d.sourcing || !d.sourcing.length) { toast("先完成采购和工厂"); return; }
+      if (!d.sourcing.every(function (item) { return typeof item.price === "number"; })) { report("采购单价还没填完"); return; }
+      var material = d.sourcing.reduce(function (sum, item) { return sum + item.price * item.amount; }, 0);
+      var result = Factory.finance({ material: material, labor: d.pickedFactory.unitCost, fixed: document.getElementById("cost-fixed").value, feeRate: document.getElementById("cost-fee").value, shipping: document.getElementById("cost-ship").value, pack: document.getElementById("cost-pack").value, price: document.getElementById("cost-price").value, qty: document.getElementById("cost-qty").value });
+      if (result.error) { report(result.error); return; }
+      patch("计算真实成本", { finance: result });
+    };
 
   ACT["goto"] = function (el) {
     var id = el.getAttribute("data-step");
+    var d = cur();
+    if (d) Store.patch(d.id, { step: id }, "跳转：" + id);
+    global.ST_VIEW = null;
     Router.goto(id);
+    global.__render && __render();
   };
   ACT["next"] = function (el) {
-    Router.goto(el.getAttribute("data-step"));
+    var id = el.getAttribute("data-step");
+    var d = cur();
+    if (d) Store.patch(d.id, { step: id }, "下一步：" + id);
+    Router.goto(id);
   };
 
   ACT["new"] = function () {
@@ -159,9 +212,18 @@
     global.__render && __render();
   };
 
+  ACT["keep"] = function () {
+    var d = cur();
+    if (!d) { toast("没有可保存的设计单"); return; }
+    var ta = document.getElementById("in-prompt");
+    if (ta && ta.value.trim() !== d.prompt) d = Store.patch(d.id, { prompt: ta.value.trim() }, "保存草稿");
+    toast(d ? "已保存" : "保存失败");
+  };
+
   ACT["del-cur"] = function () {
     var id = curId();
     if (!id) return;
+    if (!confirm("删除当前设计单？此操作不可恢复。")) return;
     Store.deleteDesign(id);
     Store.setCurrentId("");
     Router.goto("word");
@@ -169,13 +231,14 @@
     toast("已删除");
   };
 
-  ACT["close-sheet"] = function () { document.getElementById("sheet").hidden = true; };
+  ACT["close-sheet"] = function () { document.getElementById("sheet").classList.remove("open"); };
   ACT["open-settings"] = function () {
     var c = Store.getCfg();
     document.getElementById("in-base").value = c.base || "";
     document.getElementById("in-key").value = c.key || "";
     document.getElementById("in-model").value = c.model || "";
-    document.getElementById("sheet").hidden = false;
+      document.getElementById("in-image-model").value = c.imageModel || "";
+    document.getElementById("sheet").classList.add("open");
   };
 
   function saveSettings(ev) {
@@ -183,32 +246,39 @@
     var base = document.getElementById("in-base").value.trim();
     var key = document.getElementById("in-key").value.trim();
     var model = document.getElementById("in-model").value.trim();
-    Store.setCfg({ base: base, key: key, model: model });
-    document.getElementById("sheet").hidden = true;
+    var imageModel = document.getElementById("in-image-model").value.trim();
+    Store.setCfg({ base: base, key: key, model: model, imageModel: imageModel });
+    document.getElementById("sheet").classList.remove("open");
     global.__render && __render();
     toast(AI.mode() === "real" ? "接口已保存（真实模式）" : "演示模式");
   }
 
   function bind(viewEl, container) {
-    viewEl.addEventListener("click", function (ev) {
+    viewEl.addEventListener("change", function (ev) {
+        var el = ev.target.closest("[data-act='set-price']");
+        if (!el) return;
+        try { ACT["set-price"](el); }
+        catch (e) { report(e && e.message ? e.message : String(e)); }
+      });
+      viewEl.addEventListener("click", function (ev) {
       var el = ev.target.closest("[data-act]");
       if (!el) return;
       var act = el.getAttribute("data-act");
       if (ACT[act]) {
         try { ACT[act](el, container); }
-        catch (e) { console.error("[act]", act, e); toast("操作失败：" + (e.message || e)); }
+        catch (e) { report(e && e.message ? e.message : String(e)); }
       }
     });
     // 表单提交（设置）
     if (container.id === "form-settings") container.addEventListener("submit", saveSettings, false);
   }
 
-  global.Actions = { bind: bind, toast: toast, run: run };
+  global.Actions = { bind: bind, toast: toast, report: report, run: run };
   // 供外部把 data-act 字符串直接分发给动作层，用于程序化触发
   function run(actName, el) {
     if (ACT[actName]) {
       try { ACT[actName](el); }
-      catch (e) { console.error("[act]", actName, e); toast("操作失败：" + (e.message || e)); }
+      catch (e) { report(e && e.message ? e.message : String(e)); }
     }
   }
 })(window);
