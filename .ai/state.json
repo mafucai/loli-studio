@@ -1,0 +1,32 @@
+{
+  "project": "loli-studio",
+  "phase": "S0-frontend",
+  "frontend_approved": false,
+  "created_at": "2026-09-25T05:45:00Z",
+  "gate": "禁止建仓库/写Kotlin/触发Actions，直到 frontend_approved=true",
+  "flow_ref": "/workspace/repos/Coomi/docs/APP-TEMPLATE-GITHUB-ACTIONS.md",
+  "failure_ref": "/workspace/apps/loliforge + /workspace/loliforge-next 失败品（按钮双绑定死代码）",
+  "preview_url": "http://192.168.1.5:8765/index.html",
+  "server_pid": "python3 -m http.server 8765 --bind 0.0.0.0 in /workspace/apps/loli-studio/prototype",
+  "verification": {
+    "ui_regression": "scripts/ui-regression.js — 97 项全绿",
+    "e2e_data":      "scripts/e2e-data.js — 120 项全绿",
+    "js_syntax":     "node --check 全部 7 个 JS 文件通过",
+    "http_200":      "192.168.1.5:8765/index.html 返回 200"
+  },
+  "bugs_caught_and_fixed": [
+    "factory.js 第71行 未加引号中文key含斜杠 → JS语法崩",
+    "render.js 第303行 嵌套三元括号不匹配 → 浏览器打开就崩"
+  ],
+  "checklist": [
+    "[x] 读 App 模板化开发流程 (303行)",
+    "[x] 定项目名 loli-studio / 暗色工坊金 / 分步向导",
+    "[x] 9 文件全部落盘",
+    "[x] ui-regression.js 断言通过 (97/97)",
+    "[x] e2e-data.js 数据链路断言通过 (120/120)",
+    "[x] node --check 语法检查通过",
+    "[x] http.server:8765 返回 200",
+    "[ ] 主人手机浏览器验收",
+    "[ ] frontend_approved=true 才能进 §3"
+  ]
+}
