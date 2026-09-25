@@ -129,10 +129,17 @@
 
   ACT["goto"] = function (el) {
     var id = el.getAttribute("data-step");
+    var d = cur();
+    if (d) Store.patch(d.id, { step: id }, "跳转：" + id);
+    global.ST_VIEW = null;
     Router.goto(id);
+    global.__render && __render();
   };
   ACT["next"] = function (el) {
-    Router.goto(el.getAttribute("data-step"));
+    var id = el.getAttribute("data-step");
+    var d = cur();
+    if (d) Store.patch(d.id, { step: id }, "下一步：" + id);
+    Router.goto(id);
   };
 
   ACT["new"] = function () {
@@ -159,9 +166,18 @@
     global.__render && __render();
   };
 
+  ACT["keep"] = function () {
+    var d = cur();
+    if (!d) { toast("没有可保存的设计单"); return; }
+    var ta = document.getElementById("in-prompt");
+    if (ta && ta.value.trim() !== d.prompt) d = Store.patch(d.id, { prompt: ta.value.trim() }, "保存草稿");
+    toast(d ? "已保存" : "保存失败");
+  };
+
   ACT["del-cur"] = function () {
     var id = curId();
     if (!id) return;
+    if (!confirm("删除当前设计单？此操作不可恢复。")) return;
     Store.deleteDesign(id);
     Store.setCurrentId("");
     Router.goto("word");
@@ -169,13 +185,13 @@
     toast("已删除");
   };
 
-  ACT["close-sheet"] = function () { document.getElementById("sheet").hidden = true; };
+  ACT["close-sheet"] = function () { document.getElementById("sheet").classList.remove("open"); };
   ACT["open-settings"] = function () {
     var c = Store.getCfg();
     document.getElementById("in-base").value = c.base || "";
     document.getElementById("in-key").value = c.key || "";
     document.getElementById("in-model").value = c.model || "";
-    document.getElementById("sheet").hidden = false;
+    document.getElementById("sheet").classList.add("open");
   };
 
   function saveSettings(ev) {
@@ -184,7 +200,7 @@
     var key = document.getElementById("in-key").value.trim();
     var model = document.getElementById("in-model").value.trim();
     Store.setCfg({ base: base, key: key, model: model });
-    document.getElementById("sheet").hidden = true;
+    document.getElementById("sheet").classList.remove("open");
     global.__render && __render();
     toast(AI.mode() === "real" ? "接口已保存（真实模式）" : "演示模式");
   }
