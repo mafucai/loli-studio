@@ -4,36 +4,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#12110f">
-<title>洛丽塔工坊 · loli-studio</title>
+<title>洛丽塔工坊</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header class="appbar">
-  <button type="button" id="btn-history" data-act="history">历史</button>
-  <h1 id="title">设计词</h1>
-  <span id="badge-mock" class="badge">演示</span>
+  <button type="button" id="btn-history" class="icon-btn" aria-label="历史">历史</button>
+  <div class="title"><strong>洛丽塔工坊</strong><span id="title">设计</span></div>
+  <button type="button" id="badge-mock" class="icon-btn" aria-label="接口">演示</button>
 </header>
-<div id="progress" class="progress"><i id="progress-fill"></i></div>
+<div class="progress"><i id="progress-fill"></i></div>
 <main id="view"></main>
-<nav class="steps" id="steps"></nav>
-<div id="toast"></div>
-<div id="sheet" class="sheet" hidden>
-  <form id="form-settings" class="panel">
-    <h2>接口</h2>
-    <p class="hint">留空 = 演示模式（本地模拟，不联网）。填了 Base URL + Key 才真调，只存这台手机。</p>
+<nav id="steps" class="tabbar" aria-label="主导航"></nav>
+<div id="toast" class="toast"></div>
+<div id="sheet" class="sheet">
+  <form id="form-settings" class="block">
+    <h2>接口设置</h2>
+    <p class="hint">留空就是演示模式，全部用本地数据，不联网。</p>
     <label for="in-base">Base URL</label>
     <input id="in-base" name="base" placeholder="https://api.openai.com/v1" autocomplete="off">
     <label for="in-key">API Key</label>
     <input id="in-key" name="key" type="password" placeholder="sk-..." autocomplete="off">
-    <label for="in-model">模型</label>
+    <label for="in-model">文本模型</label>
     <input id="in-model" name="model" placeholder="gpt-4o-mini" autocomplete="off">
-    <div class="row gap">
-      <button type="button" data-act="close-sheet">关闭</button>
-      <button type="submit">保存</button>
+    <label for="in-image-model">图片模型</label>
+    <input id="in-image-model" name="imageModel" placeholder="留空则图片继续用演示图" autocomplete="off">
+    <div class="actions">
+      <button type="button" class="btn" data-act="close-sheet">关闭</button>
+      <button type="submit" class="btn primary">保存</button>
     </div>
   </form>
 </div>
-// 加载顺序：先定义层（router/ai/store/factory）→ 纯函数层（render）→ 动作层（actions）→ 入口（main）
 <script src="js/core/router.js"></script>
 <script src="js/core/ai.js"></script>
 <script src="js/core/store.js"></script>
