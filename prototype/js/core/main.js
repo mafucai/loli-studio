@@ -67,7 +67,7 @@
       viewEl.innerHTML = Router.render(step, d);
     }
 
-    stepsEl.innerHTML = R.stepsNav(global.ST.step, global.ST_VIEW === "history" ? null : Store.getDesign(Store.currentId()));
+    stepsEl.innerHTML = R.tabbar(global.ST_VIEW === "history" ? "word" : global.ST.step);
   }
   global.__render = render;
 
@@ -95,8 +95,9 @@
 
     // 4) 点遮罩关闭
     sheetEl.addEventListener("click", function (ev) {
-      if (ev.target === sheetEl) sheetEl.hidden = true;
+      if (ev.target === sheetEl) sheetEl.classList.remove("open");
     });
+    Actions.bind(sheetEl, sheetEl);
 
     // 5) 设置表单提交：只绑一次
     form.addEventListener("submit", function (ev) {
@@ -104,9 +105,10 @@
       Store.setCfg({
         base:  document.getElementById("in-base").value.trim(),
         key:   document.getElementById("in-key").value.trim(),
-        model: document.getElementById("in-model").value.trim()
+        model: document.getElementById("in-model").value.trim(),
+        imageModel: document.getElementById("in-image-model").value.trim()
       });
-      sheetEl.hidden = true;
+      sheetEl.classList.remove("open");
       render();
       Actions.toast(AI.mode() === "real" ? "接口已保存（真实模式）" : "演示模式");
     });
@@ -115,6 +117,10 @@
   }
 
   // 全局错误兜底：不吞错，把信息显出来
+    window.addEventListener("unhandledrejection", function (ev) {
+      var reason = ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason || "未知异步错误");
+      Actions.report(reason);
+    });
   window.addEventListener("error", function (ev) {
     var b = document.getElementById("boot-error");
     if (!b) {
@@ -123,7 +129,7 @@
       b.style.cssText = "color:#d96b6b;font-size:11px;padding:8px;background:rgba(217,107,107,.1);border-radius:6px;margin:8px";
       document.body.insertBefore(b, document.body.firstChild);
     }
-    b.textContent = "错误：" + (ev.message || ev.error) + (ev.filename ? " · " + ev.filename + ":" + ev.lineno : "");
+    Actions.report((ev.message || ev.error || "未知错误") + (ev.filename ? " · " + ev.filename + ":" + ev.lineno : ""));
   });
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
