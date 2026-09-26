@@ -17,6 +17,20 @@
 <main id="view"></main>
 <nav id="steps" class="tabbar" aria-label="主导航"></nav>
 <div id="toast" class="toast"></div>
+
+<!-- 报错助手：常驻角标（无错误时也在，可随时点开） -->
+<button type="button" id="errdot" class="errdot ok" aria-label="报错助手">✓</button>
+<div id="errpanel" class="errpanel">
+  <div class="errhead">
+    <strong>报错助手</strong>
+    <span id="errsum" class="muted">就绪</span>
+    <button type="button" id="errcopy" class="errmini">复制</button>
+    <button type="button" id="errclear" class="errmini">清空</button>
+    <button type="button" id="errclose" class="errmini">关闭</button>
+  </div>
+  <div id="errbody" class="errbody"></div>
+  <div class="errfoot muted" id="errfoot">未捕获到错误。故意造错可验证：见文档第 5、6 步。</div>
+</div>
 <div id="sheet" class="sheet">
   <form id="form-settings" class="block">
     <h2>接口设置</h2>

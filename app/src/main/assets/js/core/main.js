@@ -116,8 +116,55 @@
     render();
   }
 
-  // 全局错误兜底：不吞错，把信息显出来。
-  // 双通道上报：1) 页面红框（浏览器/APK 都可见）2) Native 桥（仅 APK，进 logcat + 原生红框）
+  // ===== 报错助手：常驻入口 + 可展开面板 =====
+  // 设计要点：无错误时也可见（角标显示 ✓ 已就绪），点开能看到「已捕获 N 条」，
+  // 这样用户能确认它在工作，而不是「想看的时候它不出现」。
+  var ERR = { list: [], max: 50 };
+
+  function errTime() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  function errPaint() {
+    var dot = document.getElementById("errdot");
+    var sum = document.getElementById("errsum");
+    var body = document.getElementById("errbody");
+    var foot = document.getElementById("errfoot");
+    if (!dot || !body) return;
+    var n = ERR.list.length;
+    dot.textContent = n === 0 ? "✓" : String(n);
+    dot.className = "errdot " + (n === 0 ? "ok" : "bad");
+    if (sum) sum.textContent = n === 0 ? "就绪 · 已捕获 0 条" : "已捕获 " + n + " 条";
+    if (n === 0) {
+      body.innerHTML = '<div class="errrow"><div class="txt muted">暂未捕获到错误。运行正常。</div></div>';
+    } else {
+      body.innerHTML = ERR.list.map(function (e) {
+        return '<div class="errrow"><div class="meta">' + e.at
+          + '<span class="src ' + e.src + '">' + e.src + '</span></div>'
+          + '<div class="txt">' + esc(e.text) + '</div></div>';
+      }).join("");
+    }
+    if (foot) foot.textContent = "收到错误会立刻显示在此，并写入 logcat（LoliStudio / LoliStudio-JS）。";
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // 统一入口：页面侧、原生桥都走这里，避免重复上报
+  function errAdd(text, src) {
+    var key = src + "|" + text;
+    for (var i = 0; i < ERR.list.length; i++) {
+      if (ERR.list[i].key === key && Date.now() - ERR.list[i].ts < 3000) return; // 3 秒内同错去重
+    }
+    ERR.list.push({ key: key, ts: Date.now(), at: errTime(), src: src || "js", text: text });
+    if (ERR.list.length > ERR.max) ERR.list.shift();
+    errPaint();
+  }
+  global.__errAdd = errAdd;
+
   function reportToNative(msg) {
     try {
       if (window.NativeErrorBridge && window.NativeErrorBridge.logError) {
@@ -126,8 +173,35 @@
     } catch (_) { /* 桥不可用（浏览器）时静默 */ }
   }
 
+  function errBindPanel() {
+    var dot = document.getElementById("errdot");
+    var panel = document.getElementById("errpanel");
+    if (!dot || !panel) return;
+    dot.addEventListener("click", function () { panel.classList.toggle("open"); });
+    var close = document.getElementById("errclose");
+    if (close) close.addEventListener("click", function () { panel.classList.remove("open"); });
+    var clear = document.getElementById("errclear");
+    if (clear) clear.addEventListener("click", function () { ERR.list = []; errPaint(); });
+    var copy = document.getElementById("errcopy");
+    if (copy) copy.addEventListener("click", function () {
+      var txt = ERR.list.map(function (e) { return e.at + " [" + e.src + "] " + e.text; }).join("\n");
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt);
+        } else {
+          var ta = document.createElement("textarea");
+          ta.value = txt; document.body.appendChild(ta); ta.select();
+          document.execCommand("copy"); ta.remove();
+        }
+        Actions.toast("已复制 " + ERR.list.length + " 条");
+      } catch (e) { Actions.toast("复制失败，请手动长按选择"); }
+    });
+    errPaint();
+  }
+
   window.addEventListener("unhandledrejection", function (ev) {
     var reason = ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason || "未知异步错误");
+    errAdd("unhandledrejection: " + reason, "js");
     Actions.report(reason);
     reportToNative("unhandledrejection: " + reason);
   });
@@ -142,18 +216,17 @@
       msg = (ev.message || ev.error || "未知错误")
           + (ev.filename ? " · " + ev.filename + ":" + ev.lineno : "");
     }
-    var b = document.getElementById("boot-error");
-    if (!b) {
-      b = document.createElement("div");
-      b.id = "boot-error";
-      b.style.cssText = "color:#d96b6b;font-size:11px;padding:8px;background:rgba(217,107,107,.1);border-radius:6px;margin:8px";
-      if (document.body) document.body.insertBefore(b, document.body.firstChild);
-      else document.documentElement.appendChild(b);
-    }
-    Actions.report(msg);
+    errAdd(msg, "js");
     reportToNative(msg);
   }, true);
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else init();
+  // 原生桥注入的错误，回显到同一个面板（避免只进 logcat 看不见）
+  window.__nativeError = function (msg) { errAdd(String(msg), "native"); };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () { errBindPanel(); init(); });
+  } else {
+    errBindPanel();
+    init();
+  }
 })(window);

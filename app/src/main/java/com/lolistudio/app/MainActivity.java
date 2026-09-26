@@ -108,8 +108,10 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 if (webView == null) return;
+                // 优先回显到页面常驻报错面板；页面未就绪时退回顶部原生红条
                 String js =
                         "(function(){try{" +
+                        "if(typeof window.__nativeError==='function'){window.__nativeError(" + quoted + ");return;}" +
                         "var b=document.getElementById('__nerr__');" +
                         "if(!b){b=document.createElement('div');b.id='__nerr__';" +
                         "b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#c00;" +
