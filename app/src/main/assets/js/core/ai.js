@@ -75,5 +75,50 @@
         return {uri:uri, source:"ai"};
       }catch(e){ return {__error:"图片接口失败："+e.message}; }
     }
-    global.AI = { chat: chat, mode: mode, imageMode: imageMode, img: imgDataUri, image: image, srand: srand };
+    // 拉取接口支持的模型列表（GET {base}/models，OpenAI 兼容格式）
+    // 不保证每个中转站都开放；失败时返回错误信息，让上层提示「可手打」
+    async function listModels(kind) {
+      var c = kind === "image" ? imgCfg() : cfg();
+      var base = String(c.base || "").replace(/\/+$/, "");
+      if (!base) return { __error: "还没填接口地址" };
+      if (!/^https:\/\//i.test(base)) return { __error: "接口地址必须使用 HTTPS" };
+      if (!c.key) return { __error: "还没填 API Key" };
+      try {
+        var r = await fetch(base + "/models", {
+          method: "GET",
+          headers: { "Authorization": "Bearer " + c.key }
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        var j = await r.json();
+        var arr = (j && j.data) || (Array.isArray(j) ? j : null);
+        if (!arr || !arr.length) throw new Error("接口没有返回模型列表");
+        var ids = [];
+        for (var i = 0; i < arr.length; i++) {
+          var id = arr[i] && (arr[i].id || arr[i].model || arr[i].name);
+          if (id && ids.indexOf(String(id)) < 0) ids.push(String(id));
+        }
+        ids.sort();
+        return { models: ids };
+      } catch (e) {
+        return { __error: "拉取失败：" + e.message + "（可手动填写模型名）" };
+      }
+    }
+
+    // 让 AI 联网搜索（用于「AI 自己拉取各大平台」）：
+    // 走 chat 接口，system 明确要求返回 JSON 数组，含 title/price/url/source。
+    // 接口若不支持联网，模型只会根据已有知识作答——所以结果必须由用户点开链接自行核实。
+    async function searchWeb(query, opts) {
+      opts = opts || {};
+      var sys = opts.system || (
+        "你是电商调研助手。请根据用户给的关键词，列出可能的相似商品或参考信息。" +
+        "只返回 JSON 数组，不要 Markdown。每项字段：title（标题）、source（平台名）、price（参考价，带￥，没有就空字符串）、url（可点击的搜索或商品地址）。" +
+        "url 一律使用对应平台的公开搜索地址；不要编造具体商品 ID。列 5 条。"
+      );
+      return chat(query, { system: sys });
+    }
+
+    global.AI = {
+      chat: chat, mode: mode, imageMode: imageMode, img: imgDataUri, image: image,
+      srand: srand, listModels: listModels, searchWeb: searchWeb
+    };
 })(window);

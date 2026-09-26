@@ -231,99 +231,6 @@
     toast("已删除");
   };
 
-  ACT["close-sheet"] = function () { document.getElementById("sheet").classList.remove("open"); };
-
-  // 每个池的 DOM 前缀
-  var EP_UI = {
-    text:  { list: "ep-list-text",  empty: "ep-empty-text",  editor: "ep-editor-text",
-             name: "in-t-name", base: "in-t-base", key: "in-t-key", model: "in-t-model" },
-    image: { list: "ep-list-image", empty: "ep-empty-image", editor: "ep-editor-image",
-             name: "in-i-name", base: "in-i-base", key: "in-i-key", model: "in-i-model" }
-  };
-
-  // 刷新单个池的界面
-  function refreshPool(kind) {
-    var ui = EP_UI[kind];
-    if (!ui) return;
-    var list = Store.listEndpoints(kind);
-    var act = Store.activeEndpoint(kind);
-    var listEl = document.getElementById(ui.list);
-    if (listEl) listEl.innerHTML = R.epListHTML(list, act ? act.id : "", kind);
-    var emptyEl = document.getElementById(ui.empty);
-    var editEl = document.getElementById(ui.editor);
-    if (!act) {
-      if (emptyEl) emptyEl.style.display = "";
-      if (editEl) editEl.style.display = "none";
-      return;
-    }
-    if (emptyEl) emptyEl.style.display = "none";
-    if (editEl) editEl.style.display = "";
-    document.getElementById(ui.name).value = act.name || "";
-    document.getElementById(ui.base).value = act.base || "";
-    document.getElementById(ui.key).value = act.key || "";
-    document.getElementById(ui.model).value = act.model || "";
-  }
-
-  // 把某个池编辑器里的内容写回该池当前接口
-  function savePoolEditor(kind) {
-    var ui = EP_UI[kind];
-    if (!ui) return null;
-    var act = Store.activeEndpoint(kind);
-    if (!act) return null;
-    var nameEl = document.getElementById(ui.name);
-    return Store.updateEndpoint(kind, act.id, {
-      name: (nameEl ? nameEl.value.trim() : "") || act.name || "未命名",
-      base: document.getElementById(ui.base).value.trim(),
-      key: document.getElementById(ui.key).value.trim(),
-      model: document.getElementById(ui.model).value.trim()
-    });
-  }
-
-  function refreshSettings() { refreshPool("text"); refreshPool("image"); }
-  global.__refreshSettings = refreshSettings;
-
-  ACT["open-settings"] = function () {
-    refreshSettings();
-    document.getElementById("sheet").classList.add("open");
-  };
-  ACT["ep-add"] = function (el) {
-    var kind = (el && el.getAttribute("data-kind")) === "image" ? "image" : "text";
-    var e = Store.addEndpoint(kind);
-    Store.setActiveEndpoint(kind, e.id);
-    refreshPool(kind);
-    global.__render && __render();
-    toast("已新增一套" + (kind === "image" ? "图片" : "文本") + "接口，填好后保存");
-  };
-  ACT["ep-pick"] = function (el) {
-    var kind = (el && el.getAttribute("data-kind")) === "image" ? "image" : "text";
-    var id = el.getAttribute("data-id");
-    savePoolEditor(kind);                 // 切换前先保存当前编辑内容，避免丢改动
-    Store.setActiveEndpoint(kind, id);
-    refreshPool(kind);
-    global.__render && __render();
-  };
-  ACT["ep-del"] = function (el) {
-    var kind = (el && el.getAttribute("data-kind")) === "image" ? "image" : "text";
-    var act = Store.activeEndpoint(kind);
-    if (!act) return;
-    if (!confirm("删除" + (kind === "image" ? "图片" : "文本") + "接口「" + (act.name || "未命名") + "」？")) return;
-    Store.removeEndpoint(kind, act.id);
-    refreshPool(kind);
-    global.__render && __render();
-    toast("已删除");
-  };
-
-  function saveSettings(ev) {
-    ev.preventDefault();
-    var kind = (ev.target && ev.target.id === "form-image") ? "image" : "text";
-    var saved = savePoolEditor(kind);
-    if (!saved) { toast("先新增一套接口"); return; }
-    refreshPool(kind);
-    global.__render && __render();
-    var m = kind === "image" ? AI.imageMode() : AI.mode();
-    toast("已保存（" + (m === "real" ? "真实模式" : "演示模式：地址或密钥为空") + "）");
-  }
-
   function bind(viewEl, container) {
     viewEl.addEventListener("change", function (ev) {
         var el = ev.target.closest("[data-act='set-price']");
@@ -340,11 +247,13 @@
         catch (e) { report(e && e.message ? e.message : String(e)); }
       }
     });
-    // 表单提交（设置）
-    // 两个表单（文本/图片）各自提交，只绑一次
-    if (container.id === "form-text" || container.id === "form-image") {
-      container.addEventListener("submit", saveSettings, false);
-    }
+    // 表单提交（设置）：交给 Settings 模块处理，只绑一次
+    if (global.Settings && global.Settings.bindForms) global.Settings.bindForms(container);
+  }
+
+  // 把 ACT 与公共函数注入 Settings 模块（接口设置/模型拉取/AI 搜索）
+  if (global.Settings && global.Settings.register) {
+    global.Settings.register(ACT, { toast: toast, report: report, patch: patch, cur: cur });
   }
 
   global.Actions = { bind: bind, toast: toast, report: report, run: run };

@@ -25,6 +25,7 @@ var files = {
   "factory.js":       "js/core/factory.js",
   "store.js":         "js/core/store.js",
   "render.js":        "js/core/render.js",
+  "settings.js":      "js/core/settings.js",
   "actions.js":       "js/core/actions.js",
   "main.js":          "js/core/main.js"
 };
@@ -85,6 +86,8 @@ var acts = {};
 var m;
 var regex = /\bACT\["([^"]+)"\]\s*=/g;
 while ((m = regex.exec(src["actions.js"]))) acts[m[1]] = true;
+// 设置相关动作已拆到 settings.js
+while ((m = regex.exec(src["settings.js"]))) acts[m[1]] = true;
 // 收集 render 里出现的所有 data-act
 var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
@@ -116,13 +119,13 @@ assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store �
 // 10. 加载顺序依赖：index.html 加载顺序为 router→ai→factory→store→render→actions→main
 var htmlScripts = (src["index.html"].match(/src="([^"]+)"/g) || [])
   .map(function (s) { return s.match(/src="([^"]+)"/)[1]; });
-var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/actions.js","js/core/main.js"];
+var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/settings.js","js/core/actions.js","js/core/main.js"];
 // 顺序：router, ai, factory 是纯模块无依赖；store 也不依赖；render 依赖 Router/AI；actions 依赖 Store/Router/AI；main 依赖全部
 var orderIdx = {};
 expected.forEach(function (e, i) { orderIdx[e] = i; });
 var actualIdx = {};
 htmlScripts.forEach(function (s, i) { actualIdx[s] = i; });
-assert(htmlScripts.length === 7, "10a. index.html 加载 7 个脚本");
+assert(htmlScripts.length === 8, "10a. index.html 加载 8 个脚本");
 // render.js 必须在 router.js 后
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/router.js"], "10b. render 在 router 后");
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/ai.js"],     "10c. render 在 ai 后");

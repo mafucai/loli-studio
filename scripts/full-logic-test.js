@@ -73,7 +73,7 @@ Object.defineProperty(ctx, "ST", { get: () => window.ST, set: v => { window.ST =
 Object.defineProperty(ctx, "ST_VIEW", { get: () => window.ST_VIEW, set: v => { window.ST_VIEW = v; }, configurable: true });
 Object.defineProperty(ctx, "__render", { get: () => window.__render, set: v => { window.__render = v; }, configurable: true });
 vm.createContext(ctx);
-["router.js","ai.js","store.js","factory.js","render.js","actions.js","main.js"].forEach(f => {
+["router.js","ai.js","store.js","factory.js","render.js","settings.js","actions.js","main.js"].forEach(f => {
   const code = fs.readFileSync(path.join(__dirname, "..", "prototype", "js", "core", f), "utf8");
   vm.runInContext(code, ctx, { filename: f });
 });
@@ -196,6 +196,56 @@ winH.error[0]({ message: "probe-err", lineno: 1 });
 ok("角标计数=1", els.errdot.textContent === "1");
 winH.unhandledrejection[0]({ reason: new Error("probe-rej") });
 ok("角标计数=2", els.errdot.textContent === "2");
+
+console.log("— 12. 拉取模型列表（API 存在）—");
+ok("AI.listModels 是函数", typeof AI.listModels === "function");
+ok("AI.searchWeb 是函数", typeof AI.searchWeb === "function");
+
+console.log("— 13. 估价块（组合页）—");
+// 造一份有采购单价的设计单
+LS["loli-studio.designs.v1"] = "[]";
+const dz = S.newDesign("估价测试");
+dz.words = window.Factory.designWords("估价测试");
+dz.bom = window.Factory.bom(dz.words);
+dz.sourcing = window.Factory.sourcing(dz.bom).map(function (x, i) { x.price = 10 + i; return x; });
+dz.combo = { uri: "data:image/svg+xml,x", note: "演示图" };
+S.saveDesign(dz); S.setCurrentId(dz.id);
+const lookHTML = R.vLook(S.getDesign(dz.id));
+ok("组合页含估价块", lookHTML.indexOf("估算价格") >= 0);
+ok("估价块含件估算成本", lookHTML.indexOf("件估算成本") >= 0);
+ok("估价块含建议零售价", lookHTML.indexOf("建议零售价") >= 0);
+ok("估价块含保底售价", lookHTML.indexOf("保底售价") >= 0);
+
+console.log("— 14. 未填单价时估价块给提示 —");
+const d2 = S.newDesign("无单价");
+d2.words = window.Factory.designWords("无单价");
+d2.bom = window.Factory.bom(d2.words);
+d2.sourcing = window.Factory.sourcing(d2.bom);   // price 全为 null
+d2.combo = { uri: "x", note: "y" };
+S.saveDesign(d2); S.setCurrentId(d2.id);
+const lookHTML2 = R.vLook(S.getDesign(d2.id));
+ok("未填单价时提示去采购填单价", lookHTML2.indexOf("还没填采购单价") >= 0);
+
+console.log("— 15. AI 结果渲染（aiResults）—");
+const aiH = R.aiResults("AI 相似款", { query: "洛丽塔 甜系", items: [
+  { title: "某相似款", source: "小红书", price: "￥299", url: "https://www.xiaohongshu.com/x" },
+  { title: "无链接项", source: "淘宝", price: "", url: "" }
+]});
+ok("含标题", aiH.indexOf("某相似款") >= 0);
+ok("含平台与价格", aiH.indexOf("小红书") >= 0 && aiH.indexOf("299") >= 0);
+ok("含打开链接", aiH.indexOf("https://www.xiaohongshu.com/x") >= 0);
+ok("标明仅供参考", aiH.indexOf("不是平台实测") >= 0);
+ok("无链接项显示无链接", aiH.indexOf("无链接") >= 0);
+const aiEmpty = R.aiResults("AI 工厂线索", null);
+ok("无结果时给提示", aiEmpty.indexOf("还没有 AI 结果") >= 0);
+
+console.log("— 16. 查重/工厂页含 AI 搜索按钮 —");
+S.patch(dz.id, { check: window.Factory.dedup(S.getDesign(dz.id).words) }, "查重");
+const chkHTML = R.vCheck(S.getDesign(dz.id));
+ok("查重页含 AI 搜索按钮", chkHTML.indexOf('data-act="ai-search"') >= 0);
+S.patch(dz.id, { factories: window.Factory.factories() }, "工厂");
+const factHTML = R.vFact(S.getDesign(dz.id));
+ok("工厂页含 AI 搜索按钮", factHTML.indexOf('data-where="fact"') >= 0);
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + pass + "  ❌ 失败 " + fail);
