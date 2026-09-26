@@ -4,10 +4,11 @@ const fs = require("fs");
 fs.mkdirSync("test-results", { recursive: true });
 const server = spawn("python3", ["-m", "http.server", "8765", "--bind", "127.0.0.1"], { cwd: "prototype", stdio: "ignore" });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let browser = null, page = null;
 async function run() {
   await sleep(1000);
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  browser = await chromium.launch({ headless: true });
+  page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   console.log("打开页面"); await page.goto("http://127.0.0.1:8765/index.html", { waitUntil: "domcontentloaded" });
@@ -53,5 +54,12 @@ async function run() {
   await page.screenshot({ path: "test-results/flow.png", fullPage: true });
   if (errors.length) throw new Error(errors.join("\n"));
   await browser.close();
+  console.log("验收通过");
 }
-run().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => server.kill());
+run().catch(async (error) => {
+  console.error(error);
+  try {
+    if (page) { await page.screenshot({ path: "test-results/fail.png", fullPage: true }); fs.writeFileSync("test-results/fail.txt", String(error && error.stack || error)); }
+  } catch (e) { console.error("截图失败:", e.message); }
+  process.exitCode = 1;
+}).finally(() => { if (browser) browser.close().catch(() => {}); server.kill(); });
