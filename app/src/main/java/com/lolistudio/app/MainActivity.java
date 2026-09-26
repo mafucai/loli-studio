@@ -9,6 +9,7 @@ import android.view.ViewGroup;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -41,6 +42,16 @@ public class MainActivity extends Activity {
 
         webView.addJavascriptInterface(new ErrorBridge(), "NativeErrorBridge");
         webView.setWebViewClient(makeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage cm) {
+                String m = "console[" + cm.messageLevel() + "] " + cm.message()
+                        + " @ " + cm.sourceId() + ":" + cm.lineNumber();
+                Log.e(TAG, m);
+                if (cm.messageLevel() == ConsoleMessage.MessageLevel.ERROR) injectError(m);
+                return true;
+            }
+        });
 
         setContentView(webView);
         webView.loadUrl(APP_URL);
@@ -61,15 +72,6 @@ public class MainActivity extends Activity {
                         + " code=" + err.getErrorCode();
                 Log.e(TAG, m);
                 injectError(m);
-            }
-
-            @Override
-            public boolean onConsoleMessage(ConsoleMessage cm) {
-                String m = "console[" + cm.messageLevel() + "] " + cm.message()
-                        + " @ " + cm.sourceId() + ":" + cm.lineNumber();
-                Log.e(TAG, m);
-                if (cm.messageLevel() == ConsoleMessage.MessageLevel.ERROR) injectError(m);
-                return true;
             }
 
             @Override
