@@ -232,25 +232,81 @@
   };
 
   ACT["close-sheet"] = function () { document.getElementById("sheet").classList.remove("open"); };
+
+  // 刷新设置面板：接口列表 + 编辑器
+  function refreshSettings() {
+    var list = Store.listEndpoints();
+    var act = Store.activeEndpoint();
+    var listEl = document.getElementById("ep-list");
+    if (listEl) listEl.innerHTML = R.epListHTML(list, act ? act.id : "");
+    var emptyEl = document.getElementById("ep-empty");
+    var editEl = document.getElementById("ep-editor");
+    if (!act) {
+      if (emptyEl) emptyEl.style.display = "";
+      if (editEl) editEl.style.display = "none";
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = "none";
+    if (editEl) editEl.style.display = "";
+    document.getElementById("in-ep-name").value = act.name || "";
+    document.getElementById("in-base").value = act.base || "";
+    document.getElementById("in-key").value = act.key || "";
+    document.getElementById("in-model").value = act.model || "";
+    document.getElementById("in-image-model").value = act.imageModel || "";
+  }
+  global.__refreshSettings = refreshSettings;
+
   ACT["open-settings"] = function () {
-    var c = Store.getCfg();
-    document.getElementById("in-base").value = c.base || "";
-    document.getElementById("in-key").value = c.key || "";
-    document.getElementById("in-model").value = c.model || "";
-      document.getElementById("in-image-model").value = c.imageModel || "";
+    refreshSettings();
     document.getElementById("sheet").classList.add("open");
   };
+  ACT["ep-add"] = function () {
+    var e = Store.addEndpoint();
+    Store.setActiveEndpoint(e.id);
+    refreshSettings();
+    global.__render && __render();
+    toast("已新增一套接口，填好地址和密钥后保存");
+  };
+  ACT["ep-pick"] = function (el) {
+    var id = el.getAttribute("data-id");
+    // 先保存当前编辑中的内容，再切换（避免切走时丢改动）
+    saveCurrentEditor();
+    Store.setActiveEndpoint(id);
+    refreshSettings();
+    global.__render && __render();
+  };
+  ACT["ep-del"] = function () {
+    var act = Store.activeEndpoint();
+    if (!act) return;
+    if (!confirm("删除接口「" + (act.name || "未命名") + "」？")) return;
+    Store.removeEndpoint(act.id);
+    refreshSettings();
+    global.__render && __render();
+    toast("已删除该接口");
+  };
+
+  // 把编辑器里的内容写回当前接口
+  function saveCurrentEditor() {
+    var act = Store.activeEndpoint();
+    if (!act) return null;
+    var nameEl = document.getElementById("in-ep-name");
+    return Store.updateEndpoint(act.id, {
+      name: (nameEl ? nameEl.value.trim() : "") || act.name || "未命名",
+      base: document.getElementById("in-base").value.trim(),
+      key: document.getElementById("in-key").value.trim(),
+      model: document.getElementById("in-model").value.trim(),
+      imageModel: document.getElementById("in-image-model").value.trim()
+    });
+  }
+  global.__saveCurrentEditor = saveCurrentEditor;
 
   function saveSettings(ev) {
     ev.preventDefault();
-    var base = document.getElementById("in-base").value.trim();
-    var key = document.getElementById("in-key").value.trim();
-    var model = document.getElementById("in-model").value.trim();
-    var imageModel = document.getElementById("in-image-model").value.trim();
-    Store.setCfg({ base: base, key: key, model: model, imageModel: imageModel });
+    var saved = saveCurrentEditor();
+    if (!saved) { toast("先新增一套接口"); return; }
     document.getElementById("sheet").classList.remove("open");
     global.__render && __render();
-    toast(AI.mode() === "real" ? "接口已保存（真实模式）" : "演示模式");
+    toast(AI.mode() === "real" ? "已保存（真实模式）" : "已保存（演示模式：地址或密钥为空）");
   }
 
   function bind(viewEl, container) {

@@ -77,7 +77,6 @@
     var viewEl = document.getElementById("view");
     var stepsEl = document.getElementById("steps");
     var sheetEl = document.getElementById("sheet");
-    var form = document.getElementById("form-settings");
 
     // 1) 主视图 / 底部步骤条：委托绑定一次
     Actions.bind(viewEl, viewEl);
@@ -99,19 +98,7 @@
     });
     Actions.bind(sheetEl, sheetEl);
 
-    // 5) 设置表单提交：只绑一次
-    form.addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      Store.setCfg({
-        base:  document.getElementById("in-base").value.trim(),
-        key:   document.getElementById("in-key").value.trim(),
-        model: document.getElementById("in-model").value.trim(),
-        imageModel: document.getElementById("in-image-model").value.trim()
-      });
-      sheetEl.classList.remove("open");
-      render();
-      Actions.toast(AI.mode() === "real" ? "接口已保存（真实模式）" : "演示模式");
-    });
+    // 5) 设置表单提交由 actions.js 的 saveSettings 负责（Actions.bind 已绑），此处不再重复绑定
 
     render();
   }

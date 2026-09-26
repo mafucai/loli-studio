@@ -288,8 +288,23 @@
     return '<div class="screen"><h1>历史</h1><p class="sub">共 ' + list.length + " 条</p>" + body + "</div>";
   }
 
+  // 接口列表（纯函数：数组+activeId → HTML）
+  function epListHTML(list, activeId) {
+    if (!list.length) {
+      return '<div class="ep-empty muted">还没有接口。点下面「＋ 新增一套接口」开始。</div>';
+    }
+    return list.map(function (e) {
+      var on = e.id === activeId;
+      var dt = e.base ? esc(String(e.base).replace(/^https?:\/\//, "")) : "未填地址";
+      return '<button type="button" class="ep-item' + (on ? " on" : "") + '" data-act="ep-pick" data-id="' + esc(e.id) + '">' +
+        (on ? '<span class="tk">用中</span>' : "") +
+        '<span class="nm">' + esc(e.name || "未命名") + "</span>" +
+        '<span class="dt">' + dt + "</span></button>";
+    }).join("");
+  }
+
   global.R = {
-    esc: esc, money: money, tabbar: tabbar,
+    esc: esc, money: money, tabbar: tabbar, epListHTML: epListHTML,
     vWord: vWord, vImg: vImg, vPart: vPart, vCheck: vCheck, vBuy: vBuy,
     vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost, vHistory: vHistory
   };
