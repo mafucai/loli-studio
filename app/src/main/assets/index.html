@@ -76,6 +76,10 @@
           <input id="in-i-key" name="key" type="password" placeholder="sk-..." autocomplete="off">
           <label for="in-i-model">图片模型</label>
           <input id="in-i-model" name="model" placeholder="dall-e-3 / gpt-image-1" autocomplete="off">
+          <div class="grid2">
+            <div><label for="in-i-size">图片尺寸</label><input id="in-i-size" name="size" placeholder="1024x1024" autocomplete="off"></div>
+            <div><label for="in-i-timeout">超时（秒）</label><input id="in-i-timeout" name="timeoutMs" inputmode="numeric" placeholder="90" autocomplete="off"></div>
+          </div>
           <button type="button" class="btn small wide" data-act="fetch-models" data-kind="image">从接口拉取模型列表</button>
           <div id="model-panel-image" class="mp" style="display:none"></div>
           <div class="actions">

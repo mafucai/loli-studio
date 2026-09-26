@@ -139,15 +139,19 @@
   // 图片接口（AI.image 用）—— 与文本完全独立
   function getImageCfg() {
     var a = activeEndpoint("image");
-    if (!a) return { base: "", key: "", model: "" };
-    return { base: a.base || "", key: a.key || "", model: a.model || "" };
+    if (!a) return { base: "", key: "", model: "", size: "", timeoutMs: 0 };
+    return {
+      base: a.base || "", key: a.key || "", model: a.model || "",
+      size: a.size || "", timeoutMs: Number(a.timeoutMs) || 0
+    };
   }
   function setImageCfg(c) {
     var p = loadPools();
     if (!p.image.list.length) addEndpoint("image", "图片接口");
     var a = activeEndpoint("image");
     return updateEndpoint("image", a.id, {
-      base: c.base || "", key: c.key || "", model: c.model || ""
+      base: c.base || "", key: c.key || "", model: c.model || "",
+      size: c.size || "", timeoutMs: Number(c.timeoutMs) || 0
     });
   }
 

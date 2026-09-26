@@ -62,19 +62,90 @@
       var shapes=""; for(var i=0;i<14;i++){var x=Math.floor(rnd()*w),y=Math.floor(rnd()*h),r=20+Math.floor(rnd()*120),o=(0.06+rnd()*0.18).toFixed(3); shapes+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+palette[i%3]+'" opacity="'+o+'"/>';}
       return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="#1b1815"/>'+shapes+'<text x="50%" y="54%" text-anchor="middle" fill="#d9b26a" font-family="serif" font-size="20">演示图</text></svg>');
     }
-    async function image(prompt){
-      var c=imgCfg(); var base=String(c.base||"").replace(/\/+$/,"");
-      if(!/^https:\/\//i.test(base)) return {__error:"图片接口地址必须使用 HTTPS"};
-      if(!c.model) return {__error:"未填写图片模型（图片接口独立设置）"};
-      try{
-        var r=await fetch(base+"/images/generations",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+c.key},body:JSON.stringify({model:c.model,prompt:prompt,size:"1024x1536",response_format:"b64_json"})});
-        if(!r.ok) throw new Error("HTTP "+r.status);
-        var j=await r.json(); var item=j.data&&j.data[0]; if(!item) throw new Error("接口没有返回图片");
-        var uri=item.b64_json?"data:image/png;base64,"+item.b64_json:(/^https:\/\//i.test(item.url||"")?item.url:"");
-        if(!uri) throw new Error("图片地址不安全或为空");
-        return {uri:uri, source:"ai"};
-      }catch(e){ return {__error:"图片接口失败："+e.message}; }
+    // 单次图片请求（可指定参数），带超时
+    async function imgRequest(c, prompt, body, timeoutMs) {
+      var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      var timer = null;
+      if (ctrl) timer = setTimeout(function () { ctrl.abort(); }, timeoutMs);
+      try {
+        var r = await fetch(c.base + "/images/generations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + c.key },
+          body: JSON.stringify(body),
+          signal: ctrl ? ctrl.signal : undefined
+        });
+        if (!r.ok) {
+          var t = "";
+          try { t = await r.text(); } catch (e2) {}
+          throw new Error("HTTP " + r.status + (t ? " " + t.slice(0, 120) : ""));
+        }
+        return await r.json();
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     }
+
+    // 从任意形状的响应里取出图片（兼容 b64 / url / 数组 / 嵌套 data）
+    function pickImage(j) {
+      var item = (j && j.data && j.data[0]) || (j && j.data) || j || {};
+      if (Array.isArray(item)) item = item[0] || {};
+      var b64 = item.b64_json || item.b64 || (j && j.b64_json) || "";
+      if (b64) return { uri: "data:image/png;base64," + b64, source: "ai" };
+      var url = item.url || (j && j.url) || "";
+      if (/^https:\/\//i.test(url)) return { uri: url, source: "ai" };
+      // 有些中转把图片放在 revisions / images 里
+      var alt = (j && j.images && j.images[0]) || "";
+      if (typeof alt === "string" && /^https:\/\//i.test(alt)) return { uri: alt, source: "ai" };
+      if (typeof alt === "string" && alt.length > 1000) return { uri: "data:image/png;base64," + alt, source: "ai" };
+      // 兼容 revisions 结构（部分中转/Grok 系）
+      var rev = (item && item.revisions && item.revisions[0]) || (j && j.revisions && j.revisions[0]) || null;
+      if (rev) {
+        var rurl = rev.url || rev.image_url || "";
+        if (/^https:\/\//i.test(rurl)) return { uri: rurl, source: "ai" };
+        var rb64 = rev.b64_json || rev.b64 || "";
+        if (rb64) return { uri: "data:image/png;base64," + rb64, source: "ai" };
+      }
+      return null;
+    }
+
+    // 图片生成：按「快→慢」尝试多种参数组合，任一成功即返回
+    // 说明：不再写死 b64+1024x1536，避免接口慢或参数不被支持时干等两三分钟
+    async function image(prompt) {
+      var c = imgCfg(); var base = String(c.base || "").replace(/\/+$/, "");
+      if (!/^https:\/\//i.test(base)) return { __error: "图片接口地址必须使用 HTTPS" };
+      if (!c.model) return { __error: "未填写图片模型（图片接口独立设置）" };
+      c.base = base;
+
+      var size = c.size || "1024x1024";          // 可在设置里自定义；默认比 1024x1536 小
+      var timeoutMs = Number(c.timeoutMs) || 90000;
+
+      // 参数组合：先 url（快），再 b64（兼容）
+      var attempts = [
+        { label: "url/" + size, body: { model: c.model, prompt: prompt, size: size, response_format: "url", n: 1 } },
+        { label: "默认/" + size, body: { model: c.model, prompt: prompt, size: size, n: 1 } },
+        { label: "b64/" + size, body: { model: c.model, prompt: prompt, size: size, response_format: "b64_json", n: 1 } }
+      ];
+
+      var lastErr = "";
+      for (var i = 0; i < attempts.length; i++) {
+        if (global.__imgProgress) global.__imgProgress("尝试 " + attempts[i].label);
+        try {
+          var j = await imgRequest(c, prompt, attempts[i].body, timeoutMs);
+          var got = pickImage(j);
+          if (got) return got;
+          lastErr = attempts[i].label + " 没返回图片";
+        } catch (e) {
+          lastErr = attempts[i].label + "：" + e.message;
+          // 地址/鉴权错误不必换参数重试
+          if (/HTTP 40[13]/.test(e.message)) break;
+          if (/aborted/i.test(e.message) || /AbortError/i.test(e.name || "")) {
+            return { __error: "图片接口超时（" + Math.round(timeoutMs / 1000) + "秒）。可在接口设置里改小尺寸或调超时。" };
+          }
+        }
+      }
+      return { __error: "图片接口失败：" + lastErr };
+    }
+
     // 拉取接口支持的模型列表（GET {base}/models，OpenAI 兼容格式）
     // 不保证每个中转站都开放；失败时返回错误信息，让上层提示「可手打」
     async function listModels(kind) {

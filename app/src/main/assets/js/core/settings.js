@@ -10,7 +10,8 @@
     text:  { list: "ep-list-text",  empty: "ep-empty-text",  editor: "ep-editor-text",
              name: "in-t-name", base: "in-t-base", key: "in-t-key", model: "in-t-model" },
     image: { list: "ep-list-image", empty: "ep-empty-image", editor: "ep-editor-image",
-             name: "in-i-name", base: "in-i-base", key: "in-i-key", model: "in-i-model" }
+             name: "in-i-name", base: "in-i-base", key: "in-i-key", model: "in-i-model",
+             size: "in-i-size", timeout: "in-i-timeout" }
   };
 
   var ACT = null, H = null;   // 由 register 注入
@@ -44,6 +45,8 @@
     document.getElementById(ui.base).value = act.base || "";
     document.getElementById(ui.key).value = act.key || "";
     document.getElementById(ui.model).value = act.model || "";
+    if (ui.size) document.getElementById(ui.size).value = act.size || "";
+    if (ui.timeout) document.getElementById(ui.timeout).value = act.timeoutMs ? Math.round(act.timeoutMs / 1000) : "";
   }
 
   function refreshSettings() { refreshPool("text"); refreshPool("image"); }
@@ -55,12 +58,18 @@
     var act = Store.activeEndpoint(kind);
     if (!act) return null;
     var nameEl = document.getElementById(ui.name);
-    return Store.updateEndpoint(kind, act.id, {
+    var patch = {
       name: (nameEl ? nameEl.value.trim() : "") || act.name || "未命名",
       base: document.getElementById(ui.base).value.trim(),
       key: document.getElementById(ui.key).value.trim(),
       model: document.getElementById(ui.model).value.trim()
-    });
+    };
+    if (ui.size) patch.size = document.getElementById(ui.size).value.trim();
+    if (ui.timeout) {
+      var sec = Number(document.getElementById(ui.timeout).value.trim());
+      patch.timeoutMs = (isFinite(sec) && sec > 0) ? Math.round(sec * 1000) : 0;
+    }
+    return Store.updateEndpoint(kind, act.id, patch);
   }
 
   // —— 模型列表面板 ——

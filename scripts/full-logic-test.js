@@ -34,7 +34,7 @@ function el(id) {
 }
 const ids = ["view","title","badge-mock","progress-fill","steps","sheet","toast",
   "in-t-name","in-t-base","in-t-key","in-t-model",
-  "in-i-name","in-i-base","in-i-key","in-i-model",
+  "in-i-name","in-i-base","in-i-key","in-i-model","in-i-size","in-i-timeout",
   "ep-list-text","ep-list-image","ep-empty-text","ep-empty-image",
   "ep-editor-text","ep-editor-image","form-text","form-image",
   "btn-history","errdot","errpanel","errsum","errbody","errfoot","errcopy","errclear","errclose",
