@@ -55,16 +55,22 @@ jobs:
           echo "选定产物: ${UNSIGNED}"
           SIGNED="app/build/outputs/apk/release/lolistudio-release.apk"
 
-          # 2) 有 Secrets 用固定签名；没有则生成临时 keystore（验证包）
-          if [ -n "${KEYSTORE_B64:-}" ]; then
+          # 2) Secrets 有效则用固定签名；为空或无效（base64 坏/空文件）则回退临时 keystore
+          #    关键：坏 secret 不能杀死整个流程（旧版 test -s 失败会 set -e 退出，见 run 36231445728）
+          USE_FIXED=0
+          if [ -n "${KEYSTORE_B64:-}" ] \
+             && printf '%s' "${KEYSTORE_B64}" | base64 -d > release-fixed.jks 2>/dev/null \
+             && [ -s release-fixed.jks ]; then
+            USE_FIXED=1
+          fi
+
+          if [ "${USE_FIXED}" = "1" ]; then
             echo "使用 Secrets 中的固定签名（可覆盖安装）"
-            echo -n "${KEYSTORE_B64}" | base64 -d > release-fixed.jks
-            test -s release-fixed.jks
             KS_PASS="${KEYSTORE_PASS}"
             KS_ALIAS="${KEYSTORE_ALIAS_NAME}"
             KS_KEYPASS="${KEY_PASS:-${KEYSTORE_PASSWORD}}"
           else
-            echo "::warning::未配置 KEYSTORE_BASE64，生成临时 keystore（验证包，不能覆盖安装正式包）"
+            echo "::warning::KEYSTORE_BASE64 为空或无效，回退临时 keystore（验证包，不能覆盖安装正式包）"
             KS_PASS="android"
             KS_ALIAS="androiddebugkey"
             KS_KEYPASS="android"
@@ -102,10 +108,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "${TAG}" \
-            app/build/outputs/apk/release/lolistudio-release.apk \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "洛丽塔工坊 ${TAG}" \
-            --notes "洛丽塔工坊 Android 版 — 云端构建 APK。含 WebView 错误回调链路（onReceivedError / onConsoleMessage / onRenderProcessGone）+ main.js 双通道上报。"
+          APK="app/build/outputs/apk/release/lolistudio-release.apk"
+          # 发 Release 属锦上添花：失败不拖垮整个 job（APK 已在 artifact 里）
+          if gh release create "${TAG}" "${APK}" \
+               --repo "${GITHUB_REPOSITORY}" \
+               --title "洛丽塔工坊 ${TAG}" \
+               --notes "洛丽塔工坊 Android 版 — 云端构建 APK。含 WebView 错误回调链路（onReceivedError / onConsoleMessage / onRenderProcessGone）+ main.js 双通道上报。"; then
+            echo "Release ${TAG} 已发布"
+          else
+            echo "::warning::Release 发布失败（tag 可能已存在），APK 仍在 artifact 中可下载"
+          fi
