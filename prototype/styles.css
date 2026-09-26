@@ -131,7 +131,10 @@ strong{color:var(--gold);font-weight:600}
 /* 弹层 */
 .sheet{position:fixed;inset:0;z-index:40;display:none;align-items:flex-end;background:rgba(0,0,0,.62)}
 .sheet.open{display:flex}
-.sheet .block{width:100%;margin:0;border-radius:20px 20px 0 0;padding:20px 16px calc(var(--safe-b) + 20px)}
+.sheet .block{width:100%;margin:0;border-radius:20px 20px 0 0;
+  padding:20px 16px calc(var(--safe-b) + 20px);
+  max-height:88vh;max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain}
 .toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + var(--bar) + 16px);z-index:50;
   max-width:86vw;padding:10px 16px;border-radius:10px;background:var(--gold);color:#1a1611;
   font-size:13px;text-align:center;opacity:0;transform:translateX(-50%);transition:opacity .2s;pointer-events:none}
@@ -179,3 +182,8 @@ strong{color:var(--gold);font-weight:600}
 .ep-sec:first-of-type{border-top:0;padding-top:0}
 .ep-title{font-size:13.5px;color:var(--gold);margin-bottom:6px}
 .ep-title .muted{font-size:11px;margin-left:6px}
+/* 设置面板标题吸顶；关闭按钮吸底（长列表也能随时关） */
+.sheet .block h2{position:sticky;top:-20px;z-index:2;background:var(--surface);
+  padding:20px 0 6px;margin-top:-20px}
+.sheet .block > .actions:last-child{position:sticky;bottom:calc(-1 * (var(--safe-b) + 20px));
+  background:var(--surface);padding:10px 0 calc(var(--safe-b) + 10px);margin-bottom:calc(-1 * (var(--safe-b) + 20px))}
