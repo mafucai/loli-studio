@@ -32,12 +32,18 @@ function el(id) {
     fire(t, ev){ (this._h[t]||[]).forEach(f=>f(ev||{preventDefault(){}})); }
   };
 }
-const ids = ["view","title","badge-mock","progress-fill","steps","sheet","form-settings","toast",
-  "in-ep-name","in-base","in-key","in-model","in-image-model","ep-list","ep-empty","ep-editor",
+const ids = ["view","title","badge-mock","progress-fill","steps","sheet","toast",
+  "in-t-name","in-t-base","in-t-key","in-t-model",
+  "in-i-name","in-i-base","in-i-key","in-i-model",
+  "ep-list-text","ep-list-image","ep-empty-text","ep-empty-image",
+  "ep-editor-text","ep-editor-image","form-text","form-image",
   "btn-history","errdot","errpanel","errsum","errbody","errfoot","errcopy","errclear","errclose",
   "in-prompt","factory-name","factory-region","factory-contact","factory-min","factory-cost",
   "cost-fixed","cost-fee","cost-ship","cost-pack","cost-price","cost-qty"];
 const els = {}; ids.forEach(i => els[i] = el(i));
+els["form-text"].id = "form-text";
+els["form-image"].id = "form-image";
+els["sheet"].id = "sheet";
 const document = {
   readyState: "complete", body: el("body"), documentElement: el("html"),
   getElementById: i => els[i] || null,
@@ -51,7 +57,7 @@ const window = { document, localStorage, addEventListener: (t,f) => (winH[t]=win
 window.window = window;
 
 // —— 加载核心 JS（顺序同 index.html，共享同一全局上下文）——
-const ctx = { window, document, localStorage, console, setTimeout, Date, JSON,
+const ctx = { window, document, localStorage, console, setTimeout, clearTimeout, Date, JSON,
   String, Number, Array, Math, isFinite, Error, Promise, confirm: () => true, fetch: window.fetch,
   encodeURIComponent, decodeURIComponent, parseFloat, parseInt, isNaN };
 ctx.globalThis = ctx;
@@ -74,67 +80,99 @@ vm.createContext(ctx);
 
 const S = window.Store, A = window.Actions, AI = window.AI, R = window.R;
 
-console.log("— 1. 多套接口：新增 / 列表 / 切换 —");
-ok("初始无接口", S.listEndpoints().length === 0);
-const e1 = S.addEndpoint("主力");
-S.setActiveEndpoint(e1.id);
-S.updateEndpoint(e1.id, { base: "https://a.com/v1", key: "k1", model: "m1", imageModel: "" });
-const e2 = S.addEndpoint("备用");
-S.updateEndpoint(e2.id, { base: "https://b.com/v1", key: "k2", model: "m2", imageModel: "img2" });
-ok("列表长度 2", S.listEndpoints().length === 2);
-ok("当前生效=主力", S.activeEndpoint().name === "主力");
+console.log("— 1. 文本池：新增 / 列表 / 切换 —");
+ok("初始无文本接口", S.listEndpoints("text").length === 0);
+const t1 = S.addEndpoint("text", "主力");
+S.setActiveEndpoint("text", t1.id);
+S.updateEndpoint("text", t1.id, { base: "https://a.com/v1", key: "k1", model: "m1" });
+const t2 = S.addEndpoint("text", "备用");
+S.updateEndpoint("text", t2.id, { base: "https://b.com/v1", key: "k2", model: "m2" });
+ok("文本列表长度 2", S.listEndpoints("text").length === 2);
+ok("文本当前=主力", S.activeEndpoint("text").name === "主力");
 ok("getCfg 返回主力", S.getCfg().base === "https://a.com/v1" && S.getCfg().key === "k1");
 
-console.log("— 2. 切换后 getCfg 跟随 —");
-S.setActiveEndpoint(e2.id);
+console.log("— 2. 文本切换后 getCfg 跟随 —");
+S.setActiveEndpoint("text", t2.id);
 ok("切到备用后 base=b", S.getCfg().base === "https://b.com/v1");
 ok("切到备用后 key=k2", S.getCfg().key === "k2");
 ok("AI.mode() 变 real", AI.mode() === "real");
-ok("imageMode 变 real（备用有 imageModel）", AI.imageMode() === "real");
 
-console.log("— 3. 删掉当前生效的那套 —");
-S.removeEndpoint(e2.id);
-ok("剩 1 套", S.listEndpoints().length === 1);
-ok("自动切回主力", S.activeEndpoint().name === "主力");
+console.log("— 3. 图片池完全独立 —");
+ok("初始图片池为空（不受文本影响）", S.listEndpoints("image").length === 0);
+ok("图片未配置 → imageMode=mock", AI.imageMode() === "mock");
+const im1 = S.addEndpoint("image", "图片主力");
+S.updateEndpoint("image", im1.id, { base: "https://img.com/v1", key: "ik", model: "dall-e-3" });
+ok("图片池有 1 套", S.listEndpoints("image").length === 1);
+ok("imageMode 变 real", AI.imageMode() === "real");
+ok("getImageCfg 独立返回", S.getImageCfg().base === "https://img.com/v1" && S.getImageCfg().model === "dall-e-3");
+ok("文本池未被图片污染", S.getCfg().base === "https://b.com/v1");
+ok("两池 id 不冲突", S.listEndpoints("text")[0].id !== S.listEndpoints("image")[0].id);
+
+console.log("— 4. 删掉文本当前生效的那套 —");
+S.removeEndpoint("text", t2.id);
+ok("文本剩 1 套", S.listEndpoints("text").length === 1);
+ok("自动切回主力", S.activeEndpoint("text").name === "主力");
 ok("getCfg 跟随回主力", S.getCfg().base === "https://a.com/v1");
+ok("图片池不受影响", S.listEndpoints("image").length === 1);
 
-console.log("— 4. 旧版单配置自动迁移 —");
-LS["loli-studio.cfg.v1"] = JSON.stringify({ base: "https://old.com/v1", key: "oldk", model: "oldm", imageModel: "" });
+console.log("— 5. 旧版 v1 单配置自动迁移 —");
+LS["loli-studio.cfg.v1"] = JSON.stringify({ base: "https://old.com/v1", key: "oldk", model: "oldm", imageModel: "oldimg" });
+delete LS["loli-studio.endpoints.v2"];
 delete LS["loli-studio.endpoints.v1"];
-ok("迁移后得到 1 套", S.listEndpoints().length === 1);
-ok("迁移内容正确", S.getCfg().base === "https://old.com/v1" && S.getCfg().key === "oldk");
+ok("迁移出文本 1 套", S.listEndpoints("text").length === 1);
+ok("迁移出图片 1 套", S.listEndpoints("image").length === 1);
+ok("文本内容正确", S.getCfg().base === "https://old.com/v1" && S.getCfg().model === "oldm");
+ok("图片内容正确", S.getImageCfg().model === "oldimg");
 
-console.log("— 5. rendered 列表 HTML —");
+console.log("— 6. 旧版 v2 混合池自动迁移 —");
+delete LS["loli-studio.endpoints.v2"];
 LS["loli-studio.endpoints.v1"] = JSON.stringify({
-  list: [{id:"epA",name:"甲",base:"https://a.com/v1",key:"",model:"",imageModel:""},
-         {id:"epB",name:"乙",base:"https://b.com/v1",key:"",model:"",imageModel:""}],
-  activeId: "epB" });
-const html = R.epListHTML(S.listEndpoints(), S.activeEndpoint().id);
-ok("HTML 含两个条目", (html.match(/ep-item/g) || []).length === 2);
-ok("HTML 标出「用中」", html.includes("用中"));
-ok("HTML 含名称", html.includes("甲") && html.includes("乙"));
-ok("HTML 去掉协议前缀", html.includes("a.com/v1") && !html.includes("https://a.com"));
+  list: [{ id: "epA", name: "甲", base: "https://a.com/v1", key: "k", model: "m", imageModel: "im" }],
+  activeId: "epA"
+});
+ok("混合池拆出文本", S.listEndpoints("text").length === 1 && S.getCfg().model === "m");
+ok("混合池拆出图片", S.listEndpoints("image").length === 1 && S.getImageCfg().model === "im");
 
-console.log("— 6. 设置面板动作 —");
+console.log("— 7. 渲染列表 HTML（含 kind）—");
+LS["loli-studio.endpoints.v2"] = JSON.stringify({
+  text: { list: [{id:"tA",name:"甲",base:"https://a.com/v1",key:"",model:"",imageModel:""},
+                 {id:"tB",name:"乙",base:"https://b.com/v1",key:"",model:"",imageModel:""}], activeId:"tB" },
+  image: { list: [{id:"iA",name:"图甲",base:"https://img.com/v1",key:"",model:"",imageModel:""}], activeId:"iA" }
+});
+const htmlT = R.epListHTML(S.listEndpoints("text"), S.activeEndpoint("text").id, "text");
+const htmlI = R.epListHTML(S.listEndpoints("image"), S.activeEndpoint("image").id, "image");
+ok("文本 HTML 两条", (htmlT.match(/ep-item/g) || []).length === 2);
+ok("文本 HTML 带 data-kind=text", htmlT.includes('data-kind="text"'));
+ok("图片 HTML 带 data-kind=image", htmlI.includes('data-kind="image"'));
+ok("HTML 标出「用中」", htmlT.includes("用中"));
+ok("HTML 去掉协议前缀", htmlT.includes("a.com/v1") && !htmlT.includes("https://a.com"));
+
+console.log("— 8. 设置面板动作（两个池）—");
 A.run("open-settings");
 ok("面板已开", els.sheet.classList.contains("open"));
-ok("列表已渲染", els["ep-list"].innerHTML.includes("ep-item"));
-A.run("ep-add");
-ok("新增后 3 套", S.listEndpoints().length === 3);
-ok("新增的那套成为当前", S.activeEndpoint().name.includes("接口"));
-els["ep-list"].innerHTML = html; // 模拟渲染
-els["in-base"].value = "https://x.com/v1"; els["in-key"].value = "xk";
-els["in-model"].value = "xm"; els["in-ep-name"].value = "改名了";
-window.__saveCurrentEditor();
-ok("编辑保存后 base 更新", S.activeEndpoint().base === "https://x.com/v1");
-ok("编辑保存后 名称更新", S.activeEndpoint().name === "改名了");
+ok("文本列表已渲染", els["ep-list-text"].innerHTML.includes("ep-item"));
+ok("图片列表已渲染", els["ep-list-image"].innerHTML.includes("ep-item"));
+A.run("ep-add", { getAttribute: k => k === "data-kind" ? "text" : null });
+ok("文本新增后 3 套", S.listEndpoints("text").length === 3);
+A.run("ep-add", { getAttribute: k => k === "data-kind" ? "image" : null });
+ok("图片新增后 2 套", S.listEndpoints("image").length === 2);
+els["in-t-name"].value = "文本改名"; els["in-t-base"].value = "https://tx.com/v1";
+els["in-t-key"].value = "txk"; els["in-t-model"].value = "txm";
+els["form-text"].fire("submit", { preventDefault(){}, target: els["form-text"] });
+ok("文本保存生效", S.activeEndpoint("text").base === "https://tx.com/v1" && S.activeEndpoint("text").name === "文本改名");
+els["in-i-name"].value = "图片改名"; els["in-i-base"].value = "https://ix.com/v1";
+els["in-i-key"].value = "ixk"; els["in-i-model"].value = "ixm";
+els["form-image"].fire("submit", { preventDefault(){}, target: els["form-image"] });
+ok("图片保存生效", S.activeEndpoint("image").base === "https://ix.com/v1");
+ok("文本保存不影响图片", S.activeEndpoint("text").base === "https://tx.com/v1");
 
-console.log("— 7. 表单提交不双触发 —");
-const before = S.listEndpoints().length;
-els["form-settings"].fire("submit", { preventDefault(){} });
-ok("提交后无异常且数量不变", S.listEndpoints().length === before);
+console.log("— 9. 表单提交不双触发 —");
+const nT = S.listEndpoints("text").length, nI = S.listEndpoints("image").length;
+els["form-text"].fire("submit", { preventDefault(){}, target: els["form-text"] });
+els["form-image"].fire("submit", { preventDefault(){}, target: els["form-image"] });
+ok("提交后数量不变", S.listEndpoints("text").length === nT && S.listEndpoints("image").length === nI);
 
-console.log("— 8. 全流程功能（九步数据链路）—");
+console.log("— 10. 全流程功能（九步数据链路）—");
 LS["loli-studio.designs.v1"] = "[]";
 const d = S.newDesign("雾霾蓝英式下午茶");
 S.saveDesign(d); S.setCurrentId(d.id);
@@ -153,7 +191,7 @@ ok("工厂搜索生成（初始无虚构记录）", S.getDesign(d.id).factories 
 const fin = window.Factory.finance({ material: 300, labor: 50, fixed: 100, feeRate: 5, shipping: 20, pack: 10, price: 800, qty: 100 });
 ok("成本计算", !fin.error && fin.profit > 0);
 
-console.log("— 9. 报错助手仍正常 —");
+console.log("— 11. 报错助手仍正常 —");
 winH.error[0]({ message: "probe-err", lineno: 1 });
 ok("角标计数=1", els.errdot.textContent === "1");
 winH.unhandledrejection[0]({ reason: new Error("probe-rej") });

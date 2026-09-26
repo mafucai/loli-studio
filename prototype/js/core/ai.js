@@ -50,7 +50,12 @@
     }
 
   // 图片：mock 时用本地 SVG 数据 URI，不依赖任何 CDN（流程 §3.7 硬约束）
-    function imageMode(){ var c=cfg(); return c.base && c.key && c.imageModel ? "real" : "mock"; }
+  // 图片接口与文本接口完全独立：各用各的地址 / 密钥 / 模型
+  function imgCfg() {
+    if (global.Store && Store.getImageCfg) return Store.getImageCfg() || {};
+    return {};   // 没有独立图片池时，明确视为未配置（不回落文本接口）
+  }
+  function imageMode(){ var c=imgCfg(); return c.base && c.key && c.model ? "real" : "mock"; }
     function imgDataUri(kind, seed, w, h){
       w=w||360; h=h||480; var rnd=srand(kind+seed);
       var palette={dress:["#e8d5c4","#c9a3b8","#f4e6d3"],detail:["#2a2431","#4a3d52","#8b6f9e"],model:["#1a1611","#3a2f3a","#6a4d5e"],combo:["#3a3129","#5a4a3a","#8a7050"],look:["#c9b8a0","#9a8870","#6a5a45"]}[kind]||["#c9b8a0","#9a8870","#6a5a45"];
@@ -58,11 +63,11 @@
       return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="#1b1815"/>'+shapes+'<text x="50%" y="54%" text-anchor="middle" fill="#d9b26a" font-family="serif" font-size="20">演示图</text></svg>');
     }
     async function image(prompt){
-      var c=cfg(); var base=String(c.base||"").replace(/\/+$/,"");
-      if(!/^https:\/\//i.test(base)) return {__error:"接口地址必须使用 HTTPS"};
-      if(!c.imageModel) return {__error:"未填写图片模型"};
+      var c=imgCfg(); var base=String(c.base||"").replace(/\/+$/,"");
+      if(!/^https:\/\//i.test(base)) return {__error:"图片接口地址必须使用 HTTPS"};
+      if(!c.model) return {__error:"未填写图片模型（图片接口独立设置）"};
       try{
-        var r=await fetch(base+"/images/generations",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+c.key},body:JSON.stringify({model:c.imageModel,prompt:prompt,size:"1024x1536",response_format:"b64_json"})});
+        var r=await fetch(base+"/images/generations",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+c.key},body:JSON.stringify({model:c.model,prompt:prompt,size:"1024x1536",response_format:"b64_json"})});
         if(!r.ok) throw new Error("HTTP "+r.status);
         var j=await r.json(); var item=j.data&&j.data[0]; if(!item) throw new Error("接口没有返回图片");
         var uri=item.b64_json?"data:image/png;base64,"+item.b64_json:(/^https:\/\//i.test(item.url||"")?item.url:"");

@@ -15,88 +15,139 @@
     catch (e) { /* 满或私隐模式：静默 */ }
   }
 
-  // —— 接口配置（多套地址/密钥）——
-  // 存储结构：{ list: [ {id,name,base,key,model,imageModel}, ... ], activeId: "ep_xxx" }
-  // 兼容旧结构：旧版是单个扁平对象 {base,key,model,imageModel} → 自动迁移成 1 套
-  var K_EP = "loli-studio.endpoints.v1";
+  // —— 接口配置（两个池：文本 / 图片，各自多套地址密钥）——
+  // 存储结构：
+  // { text: { list:[{id,name,base,key,model}],        activeId },
+  //   image:{ list:[{id,name,base,key,model}],        activeId } }
+  // 每个接口只服务一种用途：文本模型填 model，图片模型也填 model（含义随池而定）。
+  // 兼容：
+  //   v1 单配置 {base,key,model,imageModel} → 迁移为 text 1 套 + image 1 套
+  //   v2 混合池 {list:[{...model,imageModel}],activeId} → 文本/图片各自拆开
+  var K_EP = "loli-studio.endpoints.v2";
 
-  function epId() { return "ep" + Date.now().toString(36) + Math.floor(Math.random() * 1000); }
+  function epId(kind) { return (kind === "image" ? "img" : "txt") + Date.now().toString(36) + Math.floor(Math.random() * 1000); }
 
-  function emptyEp(name) {
-    return { id: epId(), name: name || "新接口", base: "", key: "", model: "", imageModel: "" };
+  function emptyEp(kind, name) {
+    return { id: epId(kind), name: name || "新接口", base: "", key: "", model: "" };
   }
 
-  function loadStore() {
+  function emptyPools() { return { text: { list: [], activeId: "" }, image: { list: [], activeId: "" } }; }
+
+  function loadPools() {
     var s = read(K_EP, null);
-    if (s && Array.isArray(s.list)) {
-      return { list: s.list, activeId: s.activeId || (s.list[0] && s.list[0].id) || "" };
+    if (s && s.text && s.image && Array.isArray(s.text.list) && Array.isArray(s.image.list)) {
+      return s;
     }
-    // 迁移旧 cfg
+    // 从 v2 混合池迁移（list + imageModel）
+    var mix = read("loli-studio.endpoints.v1", null);
+    if (mix && Array.isArray(mix.list)) {
+      var p = emptyPools();
+      mix.list.forEach(function (e) {
+        var t = emptyEp("text", e.name || "接口");
+        t.base = e.base || ""; t.key = e.key || ""; t.model = e.model || "";
+        p.text.list.push(t);
+        if (e.imageModel) {
+          var im = emptyEp("image", (e.name || "接口") + "（图片）");
+          im.base = e.base || ""; im.key = e.key || ""; im.model = e.imageModel;
+          p.image.list.push(im);
+        }
+      });
+      p.text.activeId = p.text.list[0] ? p.text.list[0].id : "";
+      p.image.activeId = p.image.list[0] ? p.image.list[0].id : "";
+      write(K_EP, p);
+      return p;
+    }
+    // 从 v1 单配置迁移
     var old = read(K_C, null);
     if (old && (old.base || old.key || old.model || old.imageModel)) {
-      var e = emptyEp("默认接口");
-      e.base = old.base || ""; e.key = old.key || "";
-      e.model = old.model || ""; e.imageModel = old.imageModel || "";
-      var migrated = { list: [e], activeId: e.id };
-      write(K_EP, migrated);
-      return migrated;
+      var q = emptyPools();
+      if (old.base || old.key || old.model) {
+        var t2 = emptyEp("text", "文本接口");
+        t2.base = old.base || ""; t2.key = old.key || ""; t2.model = old.model || "";
+        q.text.list.push(t2); q.text.activeId = t2.id;
+      }
+      if (old.base || old.key || old.imageModel) {
+        var i2 = emptyEp("image", "图片接口");
+        i2.base = old.base || ""; i2.key = old.key || ""; i2.model = old.imageModel || "";
+        q.image.list.push(i2); q.image.activeId = i2.id;
+      }
+      write(K_EP, q);
+      return q;
     }
-    return { list: [], activeId: "" };
+    return emptyPools();
   }
 
-  function saveStore(s) { write(K_EP, s); }
+  function savePools(p) { write(K_EP, p); }
+  function normKind(kind) { return kind === "image" ? "image" : "text"; }
 
-  // 列表：始终返回数组（可能为空）
-  function listEndpoints() { return loadStore().list; }
-  function activeEndpoint() {
-    var s = loadStore();
-    for (var i = 0; i < s.list.length; i++) if (s.list[i].id === s.activeId) return s.list[i];
-    return s.list[0] || null;
+  // 通用池操作（kind: "text" | "image"）
+  function listEndpoints(kind) { return loadPools()[normKind(kind)].list; }
+  function activeEndpoint(kind) {
+    var pool = loadPools()[normKind(kind)];
+    for (var i = 0; i < pool.list.length; i++) if (pool.list[i].id === pool.activeId) return pool.list[i];
+    return pool.list[0] || null;
   }
-  function addEndpoint(name) {
-    var s = loadStore();
-    var e = emptyEp(name || ("接口 " + (s.list.length + 1)));
-    s.list.push(e);
-    if (!s.activeId) s.activeId = e.id;
-    saveStore(s);
+  function addEndpoint(kind, name) {
+    var p = loadPools(); var pool = p[normKind(kind)];
+    var e = emptyEp(normKind(kind), name || ("接口 " + (pool.list.length + 1)));
+    pool.list.push(e);
+    if (!pool.activeId) pool.activeId = e.id;
+    savePools(p);
     return e;
   }
-  function updateEndpoint(id, patch) {
-    var s = loadStore();
-    for (var i = 0; i < s.list.length; i++) {
-      if (s.list[i].id === id) {
-        Object.keys(patch).forEach(function (k) { s.list[i][k] = patch[k]; });
-        saveStore(s);
-        return s.list[i];
+  function updateEndpoint(kind, id, patch) {
+    var p = loadPools(); var pool = p[normKind(kind)];
+    for (var i = 0; i < pool.list.length; i++) {
+      if (pool.list[i].id === id) {
+        // 拒绝跨池串写 model（防止 text 的 model 被写到 image 池的语义里）
+        Object.keys(patch).forEach(function (k) { pool.list[i][k] = patch[k]; });
+        savePools(p);
+        return pool.list[i];
       }
     }
     return null;
   }
-  function removeEndpoint(id) {
-    var s = loadStore();
-    s.list = s.list.filter(function (e) { return e.id !== id; });
-    if (s.activeId === id) s.activeId = s.list[0] ? s.list[0].id : "";
-    saveStore(s);
+  function removeEndpoint(kind, id) {
+    var p = loadPools(); var pool = p[normKind(kind)];
+    pool.list = pool.list.filter(function (e) { return e.id !== id; });
+    if (pool.activeId === id) pool.activeId = pool.list[0] ? pool.list[0].id : "";
+    savePools(p);
     return true;
   }
-  function setActiveEndpoint(id) {
-    var s = loadStore();
-    for (var i = 0; i < s.list.length; i++) if (s.list[i].id === id) { s.activeId = id; saveStore(s); return true; }
+  function setActiveEndpoint(kind, id) {
+    var p = loadPools(); var pool = p[normKind(kind)];
+    for (var i = 0; i < pool.list.length; i++) if (pool.list[i].id === id) { pool.activeId = id; savePools(p); return true; }
     return false;
   }
+  function resetEndpoints() { savePools(emptyPools()); return true; }
 
-  // getCfg/setCfg 保持旧签名：返回/写入「当前生效那一套」的扁平结构，ai.js 无需改动
+  // 文本接口（AI.chat 用）
   function getCfg() {
-    var a = activeEndpoint();
+    var a = activeEndpoint("text");
     if (!a) return { base: "", key: "", model: "", imageModel: "" };
-    return { base: a.base || "", key: a.key || "", model: a.model || "", imageModel: a.imageModel || "" };
+    return { base: a.base || "", key: a.key || "", model: a.model || "", imageModel: "" };
   }
   function setCfg(c) {
-    var a = activeEndpoint();
-    if (!a) { a = addEndpoint("默认接口"); }
-    return updateEndpoint(a.id, {
-      base: c.base || "", key: c.key || "",
-      model: c.model || "", imageModel: c.imageModel || ""
+    var p = loadPools();
+    if (!p.text.list.length) addEndpoint("text", "文本接口");
+    var a = activeEndpoint("text");
+    return updateEndpoint("text", a.id, {
+      base: c.base || "", key: c.key || "", model: c.model || ""
+    });
+  }
+
+  // 图片接口（AI.image 用）—— 与文本完全独立
+  function getImageCfg() {
+    var a = activeEndpoint("image");
+    if (!a) return { base: "", key: "", model: "" };
+    return { base: a.base || "", key: a.key || "", model: a.model || "" };
+  }
+  function setImageCfg(c) {
+    var p = loadPools();
+    if (!p.image.list.length) addEndpoint("image", "图片接口");
+    var a = activeEndpoint("image");
+    return updateEndpoint("image", a.id, {
+      base: c.base || "", key: c.key || "", model: c.model || ""
     });
   }
 
@@ -173,10 +224,13 @@
     newDesign: newDesign, saveDesign: saveDesign, patch: patch,
     getDesign: getDesign, listDesigns: listDesigns, deleteDesign: deleteDesign,
     getCfg: getCfg, setCfg: setCfg, currentId: currentId, setCurrentId: setCurrentId,
-    // 多套接口
+    // 图像接口（独立池）
+    getImageCfg: getImageCfg, setImageCfg: setImageCfg,
+    // 多套接口（kind: "text" | "image"）
     listEndpoints: listEndpoints, activeEndpoint: activeEndpoint,
     addEndpoint: addEndpoint, updateEndpoint: updateEndpoint,
     removeEndpoint: removeEndpoint, setActiveEndpoint: setActiveEndpoint,
+    resetEndpoints: resetEndpoints,
     _keys: { K_D: K_D, K_C: K_C, K_EP: K_EP }  // 暴露键名仅用于回归断言
   };
 })(window);

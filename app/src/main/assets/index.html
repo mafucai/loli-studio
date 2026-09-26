@@ -34,28 +34,54 @@
 <div id="sheet" class="sheet">
   <div class="block">
     <h2>接口设置</h2>
-    <p class="hint">可保存多套地址和密钥。选中哪套，就用哪套。留空=演示模式。</p>
-    <div id="ep-list" class="ep-list"></div>
-    <button type="button" class="btn" data-act="ep-add" id="ep-add-btn">＋ 新增一套接口</button>
-    <form id="form-settings" class="ep-form">
-      <div id="ep-empty" class="ep-empty muted">还没有接口。点上面「＋ 新增一套接口」开始。</div>
-      <div id="ep-editor" class="ep-editor" style="display:none">
-        <label for="in-ep-name">名称（自己认得出就行）</label>
-        <input id="in-ep-name" name="epName" placeholder="例如：主力 / 备用 / 便宜模型" autocomplete="off">
-        <label for="in-base">Base URL</label>
-        <input id="in-base" name="base" placeholder="https://api.openai.com/v1" autocomplete="off">
-        <label for="in-key">API Key</label>
-        <input id="in-key" name="key" type="password" placeholder="sk-..." autocomplete="off">
-        <label for="in-model">文本模型</label>
-        <input id="in-model" name="model" placeholder="gpt-4o-mini" autocomplete="off">
-        <label for="in-image-model">图片模型</label>
-        <input id="in-image-model" name="imageModel" placeholder="留空则图片继续用演示图" autocomplete="off">
-        <div class="actions">
-          <button type="button" class="btn danger" data-act="ep-del">删除这套</button>
-          <button type="submit" class="btn primary">保存</button>
+    <p class="hint">文本模型和图片模型各用各的接口，互不影响。每边都能存多套，选中哪套用哪套。留空=演示模式。</p>
+
+    <div class="ep-sec">
+      <div class="ep-title">文本接口<span class="muted">（设计词、拆件说明等）</span></div>
+      <div id="ep-list-text" class="ep-list"></div>
+      <button type="button" class="btn" data-act="ep-add" data-kind="text">＋ 新增文本接口</button>
+      <form id="form-text" class="ep-form">
+        <div id="ep-empty-text" class="ep-empty muted">还没有文本接口。</div>
+        <div id="ep-editor-text" class="ep-editor" style="display:none">
+          <label for="in-t-name">名称</label>
+          <input id="in-t-name" name="name" placeholder="例如：主力 / 备用" autocomplete="off">
+          <label for="in-t-base">Base URL</label>
+          <input id="in-t-base" name="base" placeholder="https://api.openai.com/v1" autocomplete="off">
+          <label for="in-t-key">API Key</label>
+          <input id="in-t-key" name="key" type="password" placeholder="sk-..." autocomplete="off">
+          <label for="in-t-model">文本模型</label>
+          <input id="in-t-model" name="model" placeholder="gpt-4o-mini" autocomplete="off">
+          <div class="actions">
+            <button type="button" class="btn danger" data-act="ep-del" data-kind="text">删除这套</button>
+            <button type="submit" class="btn primary">保存文本接口</button>
+          </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
+
+    <div class="ep-sec">
+      <div class="ep-title">图片接口<span class="muted">（出图、组合图、模特图）</span></div>
+      <div id="ep-list-image" class="ep-list"></div>
+      <button type="button" class="btn" data-act="ep-add" data-kind="image">＋ 新增图片接口</button>
+      <form id="form-image" class="ep-form">
+        <div id="ep-empty-image" class="ep-empty muted">还没有图片接口。留空则图片用演示图。</div>
+        <div id="ep-editor-image" class="ep-editor" style="display:none">
+          <label for="in-i-name">名称</label>
+          <input id="in-i-name" name="name" placeholder="例如：主力 / 备用" autocomplete="off">
+          <label for="in-i-base">Base URL</label>
+          <input id="in-i-base" name="base" placeholder="https://api.openai.com/v1" autocomplete="off">
+          <label for="in-i-key">API Key</label>
+          <input id="in-i-key" name="key" type="password" placeholder="sk-..." autocomplete="off">
+          <label for="in-i-model">图片模型</label>
+          <input id="in-i-model" name="model" placeholder="dall-e-3 / gpt-image-1" autocomplete="off">
+          <div class="actions">
+            <button type="button" class="btn danger" data-act="ep-del" data-kind="image">删除这套</button>
+            <button type="submit" class="btn primary">保存图片接口</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
     <div class="actions">
       <button type="button" class="btn" data-act="close-sheet">关闭</button>
     </div>

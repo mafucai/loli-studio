@@ -1,5 +1,5 @@
 /* 入口：唯一一次事件绑定。失败品教训：绑定散落 = 按钮失效。
- * 每个稳定容器（view/steps/sheet/btn-history/badge-mock/form-settings）只在 init 里绑一次，
+ * 每个稳定容器（view/steps/sheet/btn-history/badge-mock/form-text/form-image）只在 init 里绑一次，
  * 后续 render 只换 innerHTML，事件通过委托自动生效。
  */
 (function (global) {
@@ -98,7 +98,11 @@
     });
     Actions.bind(sheetEl, sheetEl);
 
-    // 5) 设置表单提交由 actions.js 的 saveSettings 负责（Actions.bind 已绑），此处不再重复绑定
+    // 5) 两个设置表单（文本 / 图片）各自绑定提交，只绑一次
+    ["form-text", "form-image"].forEach(function (fid) {
+      var f = document.getElementById(fid);
+      if (f) Actions.bind(f, f);
+    });
 
     render();
   }

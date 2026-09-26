@@ -175,3 +175,7 @@ strong{color:var(--gold);font-weight:600}
 .ep-empty{padding:12px 0;font-size:12px}
 .ep-editor{margin-top:10px}
 .btn.danger{border-color:#7a3030;color:#e08a8a}
+.ep-sec{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.ep-sec:first-of-type{border-top:0;padding-top:0}
+.ep-title{font-size:13.5px;color:var(--gold);margin-bottom:6px}
+.ep-title .muted{font-size:11px;margin-left:6px}
