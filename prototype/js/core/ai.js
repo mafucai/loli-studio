@@ -65,6 +65,7 @@
     // 把外链图片转成 data URI。
     // 优先走原生桥 fetchImageAsDataUri（无 CORS/混合来源限制）；
     // 浏览器里没有桥时退回 JS fetch（可能被 CORS 拦，那就原样返回让 <img> 试）。
+    // 注意：桥超时必须短且可控，否则整条出图链路会被拖死（曾经用 105 秒导致「中断不了」）。
     function urlToDataUri(url, timeoutMs) {
       if (!/^https:\/\//i.test(url)) return Promise.resolve(url);
       var bridge = global.NativeErrorBridge;
@@ -72,11 +73,12 @@
         return new Promise(function (resolve) {
           var name = "__imgcb_" + Math.floor(Math.random() * 1e9);
           var done = false;
+          var wait = Math.min(Math.max((timeoutMs || 30000), 15000), 45000);  // 桥等待 15~45 秒
           var timer = setTimeout(function () {
             if (done) return; done = true;
             delete global[name];
             resolve(url);   // 超时退回原链
-          }, (timeoutMs || 90000) + 15000);
+          }, wait);
           global[name] = function (dataUri) {
             if (done) return; done = true;
             clearTimeout(timer);
@@ -90,17 +92,19 @@
           }
         });
       }
-      // 浏览器兜底
+      // 浏览器兜底（带超时，避免 CORS 挂死）
       return new Promise(function (resolve) {
+        var settled = false;
+        var t = setTimeout(function () { if (!settled) { settled = true; resolve(url); } }, 20000);
         fetch(url).then(function (r) {
-          if (!r.ok) return resolve(url);
+          if (!r.ok) { if (!settled) { settled = true; clearTimeout(t); resolve(url); } return; }
           return r.blob().then(function (blob) {
             var fr = new FileReader();
-            fr.onload = function () { resolve(String(fr.result || url)); };
-            fr.onerror = function () { resolve(url); };
+            fr.onload = function () { if (!settled) { settled = true; clearTimeout(t); resolve(String(fr.result || url)); } };
+            fr.onerror = function () { if (!settled) { settled = true; clearTimeout(t); resolve(url); } };
             fr.readAsDataURL(blob);
           });
-        }).catch(function () { resolve(url); });
+        }).catch(function () { if (!settled) { settled = true; clearTimeout(t); resolve(url); } });
       });
     }
 
@@ -161,11 +165,12 @@
       var size = c.size || "1024x1024";          // 可在设置里自定义；默认比 1024x1536 小
       var timeoutMs = Number(c.timeoutMs) || 90000;
 
-      // 参数组合：先 url（快），再 b64（兼容）
+      // 参数组合：b64 优先（一次拿到图片数据，不需二次下载、不依赖原生桥、不受 CORS 影响）
+      // 其次默认，最后 url（url 需要二次下载，仅在接口只给 url 时用）
       var attempts = [
-        { label: "url/" + size, body: { model: c.model, prompt: prompt, size: size, response_format: "url", n: 1 } },
+        { label: "b64/" + size, body: { model: c.model, prompt: prompt, size: size, response_format: "b64_json", n: 1 } },
         { label: "默认/" + size, body: { model: c.model, prompt: prompt, size: size, n: 1 } },
-        { label: "b64/" + size, body: { model: c.model, prompt: prompt, size: size, response_format: "b64_json", n: 1 } }
+        { label: "url/" + size, body: { model: c.model, prompt: prompt, size: size, response_format: "url", n: 1 } }
       ];
 
       var lastErr = "";

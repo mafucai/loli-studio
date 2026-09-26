@@ -89,19 +89,25 @@ const S = window.Store, AI = window.AI;
   S.setActiveEndpoint("image", i.id);
   S.updateEndpoint("image", i.id, { base: "https://img.test/v1", key: "ik", model: "grok-imagine-image-2.0" });
 
-  console.log("— 1. 首选 url 格式，一次成功（并走原生桥转 data URI）—");
-  PLAN = [{ data: [{ url: "https://cdn.test/a.png" }] }]; CALLS = [];
+  console.log("— 1. b64 优先，一次调用直接出图（不需二次下载）—");
+  PLAN = [{ data: [{ b64_json: "QUJD" }] }]; CALLS = [];
   let r = await AI.image("一条洛丽塔裙");
   ok("返回图片", !r.__error);
-  ok("外链已转成 data URI（原生桥）", /^data:image\//.test(r.uri));
-  ok("接口只调一次", CALLS.length === 1);
-  ok("请求用 response_format=url", CALLS[0].body.response_format === "url");
-  ok("默认尺寸 1024x1024（不再写死 1536）", CALLS[0].body.size === "1024x1024");
+  ok("直接得到 data URI", /^data:image\//.test(r.uri));
+  ok("只调一次接口", CALLS.length === 1);
+  ok("首选 b64_json", CALLS[0].body.response_format === "b64_json");
+  ok("默认尺寸 1024x1024", CALLS[0].body.size === "1024x1024");
 
-  console.log("— 2. url 失败 → 自动回退默认/b64 —");
+  console.log("— 1b. b64 不支持时才退到 url（走原生桥）—");
+  PLAN = ["400", "400", { data: [{ url: "https://cdn.test/a.png" }] }]; CALLS = [];
+  r = await AI.image("p");
+  ok("第三次用 url", CALLS.length === 3 && CALLS[2].body.response_format === "url");
+  ok("外链经原生桥转 data URI", r.uri === "data:image/jpeg;base64,NATIVEIMG");
+
+  console.log("— 2. b64 失败 → 退到默认参数 —");
   PLAN = ["400", { data: [{ b64_json: "QUJD" }] }]; CALLS = [];
   r = await AI.image("p");
-  ok("回退后拿到 b64", !r.__error && r.uri === "data:image/png;base64,QUJD");
+  ok("回退后拿到图片", !r.__error);
   ok("试了两次", CALLS.length === 2);
   ok("第二次无 response_format", CALLS[1].body.response_format === undefined);
 
@@ -143,17 +149,17 @@ const S = window.Store, AI = window.AI;
   r = await AI.image("p");
   ok("拒绝非 HTTPS", !!r.__error && r.__error.indexOf("HTTPS") >= 0);
 
-  console.log("— 9. 原生桥优先（无 CORS 限制）—");
+  console.log("— 9. 原生桥优先（仅当接口只给 url 时）—");
   S.updateEndpoint("image", i.id, { base: "https://img.test/v1", key: "ik", model: "m", size: "", timeoutMs: 0 });
-  PLAN = [{ data: [{ url: "https://cdn.test/b.png" }] }]; CALLS = [];
+  PLAN = ["400", "400", { data: [{ url: "https://cdn.test/b.png" }] }]; CALLS = [];
   r = await AI.image("p");
-  ok("走原生桥得到 data URI", r.uri === "data:image/jpeg;base64,NATIVEIMG");
-  ok("原生桥路径不触发 JS fetch 下载", CALLS.length === 1);
+  ok("只有 url 时走原生桥得到 data URI", r.uri === "data:image/jpeg;base64,NATIVEIMG");
+  ok("b64 不可用才退到 url", CALLS.length === 3);
 
   console.log("— 10. 无原生桥时退回 JS fetch（浏览器）—");
   const savedBridge = window.NativeErrorBridge;
   delete window.NativeErrorBridge;
-  PLAN = [{ data: [{ url: "https://cdn.test/a.png" }] }]; CALLS = [];
+  PLAN = ["400", "400", { data: [{ url: "https://cdn.test/a.png" }] }]; CALLS = [];
   r = await AI.image("p");
   ok("浏览器下也能出图", !r.__error && /^data:/.test(r.uri));
   window.NativeErrorBridge = savedBridge;

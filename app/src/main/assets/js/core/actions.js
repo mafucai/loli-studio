@@ -73,17 +73,23 @@
       return;
     }
     var secs = 0;
-    toast("正在生成图片…（0 秒）");
-    var tick = setInterval(function(){ secs += 5; toast("正在生成图片…（" + secs + " 秒，最长约 90 秒）"); }, 5000);
+    var stage = "准备中";
+    global.__imgProgress = function (msg) { stage = msg || stage; };
+    toast("正在生成图片…（" + stage + "）");
+    var tick = setInterval(function(){
+      secs += 5;
+      toast("正在生成图片…（" + secs + " 秒 · " + stage + "）");
+    }, 5000);
     try {
       var result = await AI.image(prompt);
-      clearInterval(tick);
       if (result.__error) { report(result.__error); return; }
       save(result.uri, "ai");
       toast("图片生成完成");
     } catch (e) {
-      clearInterval(tick);
       report("图片生成异常：" + (e && e.message ? e.message : String(e)));
+    } finally {
+      clearInterval(tick);
+      global.__imgProgress = null;
     }
   }
   ACT["gen-img"] = function () { var d=cur(); if(!d||!d.words){ toast("先生成设计词"); return; } var w=d.words; makeImage("dress","洛丽塔服装平铺图，"+w.color+"，"+w.style+"，"+w.mainFabric+"，细节："+w.details.join("、"), function(uri,source){ patch("生成图",{imgUri:uri,imgPassed:false,imgSource:source}); }); };
