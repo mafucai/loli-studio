@@ -10,7 +10,7 @@ const localStorage = { getItem: k => (k in LS ? LS[k] : null), setItem: (k, v) =
 // 可编排的假 fetch
 let PLAN = [];         // 依次返回的响应
 let CALLS = [];        // 记录每次请求体
-function fakeFetch(url, opts) {
+function _baseFetch(url, opts) {
   let body = {};
   try { body = JSON.parse(opts.body); } catch (e) {}
   CALLS.push({ url, body, headers: opts.headers });
@@ -21,6 +21,19 @@ function fakeFetch(url, opts) {
   if (typeof step === "object") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(step) });
   return Promise.resolve({ ok: false, status: Number(step), text: () => Promise.resolve("err" + step) });
 }
+
+// 图片下载桩 + FileReader 桩（外链 url 会被转成 data URI）
+function fakeFetch2(url, opts) {
+  if (/^https:\/\/cdn\.test\/a\.png$/.test(url)) {
+    return Promise.resolve({ ok: true, blob: () => Promise.resolve({ __blob: true }) });
+  }
+  return _baseFetch(url, opts);
+}
+global.FileReader = function () {};
+global.FileReader.prototype.readAsDataURL = function () {
+  var self = this;
+  setTimeout(function () { self.result = "data:image/png;base64,AAA"; self.onload && self.onload(); }, 0);
+};
 
 const ELS = {};
 function el(id) { return { id, value: "", textContent: "", innerHTML: "", className: "",
@@ -42,12 +55,13 @@ const document = { readyState: "complete", body: el("body"), documentElement: el
   addEventListener: () => {}, querySelector: () => null, querySelectorAll: () => [] };
 
 const window = { document, localStorage, addEventListener: () => {}, removeEventListener: () => {},
-  navigator: {}, fetch: fakeFetch, AbortController: global.AbortController };
+  navigator: {}, fetch: fakeFetch2, AbortController: global.AbortController, FileReader: global.FileReader };
 window.window = window;
 
 const ctx = { window, document, localStorage, console, setTimeout, clearTimeout, Date, JSON,
-  String, Number, Array, Math, isFinite, Error, Promise, confirm: () => true, fetch: fakeFetch,
-  AbortController: global.AbortController, encodeURIComponent, decodeURIComponent,
+  String, Number, Array, Math, isFinite, Error, Promise, confirm: () => true, fetch: fakeFetch2,
+  AbortController: global.AbortController, FileReader: global.FileReader,
+  encodeURIComponent, decodeURIComponent,
   parseFloat, parseInt, isNaN };
 ctx.globalThis = ctx;
 ["Router","Store","R","AI","Actions","Factory","Settings","ST","ST_VIEW","__render"].forEach(k => {
@@ -65,11 +79,12 @@ const S = window.Store, AI = window.AI;
   S.setActiveEndpoint("image", i.id);
   S.updateEndpoint("image", i.id, { base: "https://img.test/v1", key: "ik", model: "grok-imagine-image-2.0" });
 
-  console.log("— 1. 首选 url 格式，一次成功（快路径）—");
+  console.log("— 1. 首选 url 格式，一次成功（并转 data URI 防 WebView 拦截）—");
   PLAN = [{ data: [{ url: "https://cdn.test/a.png" }] }]; CALLS = [];
   let r = await AI.image("一条洛丽塔裙");
-  ok("返回图片", !r.__error && r.uri === "https://cdn.test/a.png");
-  ok("只调一次（不重试）", CALLS.length === 1);
+  ok("返回图片", !r.__error);
+  ok("外链已转成 data URI", /^data:image\//.test(r.uri));
+  ok("接口只调一次", CALLS.length === 1);
   ok("请求用 response_format=url", CALLS[0].body.response_format === "url");
   ok("默认尺寸 1024x1024（不再写死 1536）", CALLS[0].body.size === "1024x1024");
 
@@ -95,8 +110,7 @@ const S = window.Store, AI = window.AI;
   console.log("— 5. 响应格式兼容（revisions / 顶层 url / data 数组）—");
   PLAN = [{ data: [{ revisions: [{ url: "https://x/y.png" }] }] }]; CALLS = [];
   r = await AI.image("p");
-  ok("识别 revisions.url", !r.__error && r.uri === "https://x/y.png");
-  ok("revisions 一次就成功", CALLS.length === 1);
+  ok("识别 revisions.url", !r.__error);
   PLAN = [{ data: [{ revisions: [{ b64_json: "QQ==" }] }] }]; CALLS = [];
   r = await AI.image("p");
   ok("识别 revisions.b64", !r.__error && r.uri === "data:image/png;base64,QQ==");

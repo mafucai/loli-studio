@@ -37,8 +37,18 @@ public class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setAllowFileAccess(false);   // assets 走 android_asset 通道，不受此限
+        // assets 走 android_asset 通道，file 直读仍关闭（安全）
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
+
+        // 关键：允许 file:// 页面加载 https:// 外部图片（图片接口返回的 URL）
+        // 不放开这个，接口成功、URL 拿到，但页面里显示不出图
+        settings.setBlockNetworkImage(false);
+        settings.setLoadsImagesAutomatically(true);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
 
         webView.addJavascriptInterface(new ErrorBridge(), "NativeErrorBridge");
         webView.setWebViewClient(makeClient());

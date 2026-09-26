@@ -62,6 +62,29 @@
       var shapes=""; for(var i=0;i<14;i++){var x=Math.floor(rnd()*w),y=Math.floor(rnd()*h),r=20+Math.floor(rnd()*120),o=(0.06+rnd()*0.18).toFixed(3); shapes+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+palette[i%3]+'" opacity="'+o+'"/>';}
       return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="#1b1815"/>'+shapes+'<text x="50%" y="54%" text-anchor="middle" fill="#d9b26a" font-family="serif" font-size="20">演示图</text></svg>');
     }
+    // 把外链图片转成 data URI（部分 WebView 会拦 file:// 页面加载外链图片）
+    // 失败时原样返回，让 <img> 自己去试
+    async function urlToDataUri(url, timeoutMs) {
+      if (!/^https:\/\//i.test(url)) return url;
+      var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs || 30000) : null;
+      try {
+        var r = await fetch(url, { signal: ctrl ? ctrl.signal : undefined });
+        if (!r.ok) return url;
+        var blob = await r.blob();
+        return await new Promise(function (resolve) {
+          var fr = new FileReader();
+          fr.onload = function () { resolve(String(fr.result || url)); };
+          fr.onerror = function () { resolve(url); };
+          fr.readAsDataURL(blob);
+        });
+      } catch (e) {
+        return url;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+
     // 单次图片请求（可指定参数），带超时
     async function imgRequest(c, prompt, body, timeoutMs) {
       var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
@@ -132,7 +155,14 @@
         try {
           var j = await imgRequest(c, prompt, attempts[i].body, timeoutMs);
           var got = pickImage(j);
-          if (got) return got;
+          if (got) {
+            // 若拿到的是外链，先尝试转 data URI（避免 WebView 拦外链图片）
+            if (/^https:\/\//i.test(got.uri)) {
+              if (global.__imgProgress) global.__imgProgress("下载图片…");
+              got.uri = await urlToDataUri(got.uri, timeoutMs);
+            }
+            return got;
+          }
           lastErr = attempts[i].label + " 没返回图片";
         } catch (e) {
           lastErr = attempts[i].label + "：" + e.message;
