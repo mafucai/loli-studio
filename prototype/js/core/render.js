@@ -128,7 +128,8 @@
         '<p class="hint">先通过上一步的图片，再拆件。</p>' +
         '<button type="button" class="btn primary wide" data-act="gen-bom">生成清单</button></div>';
     } else {
-      body += '<div class="block"><h2>物料</h2><div class="scroll-x"><table><thead><tr>' +
+      var srcNote = d.bomSource === "ai" ? "由文本 AI 拆解" : "由本地零件库生成（演示）";
+      body += '<div class="block"><h2>物料</h2><p class="hint">来源：' + esc(srcNote) + '</p><div class="scroll-x"><table><thead><tr>' +
         "<th>零件</th><th>材料</th><th>用量</th><th>价</th></tr></thead><tbody>" +
         b.rows.map(function (r) {
           return "<tr><td>" + esc(r.part) + '<div class="muted" style="font-size:11px">' + esc(r.note) + "</div></td>" +
@@ -167,7 +168,7 @@
       body += '<div class="block"><h2>AI 帮我搜</h2>' +
         '<p class="hint">让 AI 搜相似款参考。仅供参考，不是平台实测。</p>' +
         '<button type="button" class="btn wide" data-act="ai-search" data-where="check">AI 搜索相似款</button></div>';
-      body += aiResults("AI 相似款", d.aiCheck);
+      body += R.aiResults("AI 相似款", d.aiCheck);
       var done = c.results.every(function (r) { return r.verdict; });
       var duplicated = c.results.some(function (r) { return r.verdict === "雷同"; });
       if (d.markedOriginal) body += '<div class="block" style="text-align:center"><span class="origil">原创</span>' + nextBtn("buy", "下一步 · 采购") + "</div>";
@@ -192,6 +193,18 @@
       }).join("");
       var complete = list.every(function (item) { return typeof item.price === "number" && item.price >= 0; });
       var total = list.reduce(function (sum, item) { return sum + (item.price || 0) * item.amount; }, 0);
+      body += '<div class="block"><h2>AI 帮我比价</h2>' +
+        '<p class="hint">让文本 AI 判断每个零件在哪类平台更可能便宜。仅供参考，真实价格请点上面链接核实。</p>' +
+        '<button type="button" class="btn wide" data-act="ai-compare">AI 比价</button>' +
+        (d.aiCompare && d.aiCompare.items && d.aiCompare.items.length
+          ? '<div class="stack" style="margin-top:10px">' + d.aiCompare.items.map(function (it) {
+              return '<div class="hr"></div><strong>' + esc(it.part) + '</strong>' +
+                (it.best ? '<p class="hint">建议平台：<span class="gold">' + esc(it.best) + "</span></p>" : "") +
+                (it.keyword ? '<p class="hint">搜索词：' + esc(it.keyword) + "</p>" : "") +
+                (it.tip ? '<p class="hint">' + esc(it.tip) + "</p>" : "");
+            }).join("") + "</div>"
+          : "") +
+        "</div>";
       body += '<div class="block"><h2>采购合计</h2><div class="price">' + (complete ? money(total) : "待填写") + '</div><p class="hint">只统计你填写的真实价格。</p>' + (complete ? nextBtn("look", "下一步 · 组合") : "") + "</div>";
     }
     return screen("buy", "采购", "第 5 步，共 9 步", body);
@@ -221,7 +234,7 @@
           '<div class="kv"><span>大货单件成本</span><span>' + money(fabric + labor + fixed) + "</span></div>" +
           "</div>";
       }
-      body += estimateBlock(d);
+      body += R.estimateBlock(d);
       body += nextBtn("model", "下一步 · 模特");
     }
     return screen("look", "组合", "第 6 步，共 9 步", body);
@@ -260,7 +273,7 @@
       body += '<div class="block"><h2>AI 帮我搜工厂</h2>' +
         '<p class="hint">让 AI 搜洛丽塔代工厂 / 产业带线索。仅供参考，务必自行核实。</p>' +
         '<button type="button" class="btn wide" data-act="ai-search" data-where="fact">AI 搜索代工厂</button></div>';
-      body += aiResults("AI 工厂线索", d.aiFactories);
+      body += R.aiResults("AI 工厂线索", d.aiFactories);
       body += '<div class="block"><h2>记录真实工厂</h2><input id="factory-name" placeholder="工厂名称"><input id="factory-region" placeholder="地区"><input id="factory-contact" placeholder="联系方式"><input id="factory-min" inputmode="numeric" placeholder="起订量"><input id="factory-cost" inputmode="decimal" placeholder="加工单价（元）"><button type="button" class="btn primary wide" data-act="add-factory">添加记录</button></div>';
       body += '<div class="block"><h2>已记录</h2>' + (data.records.length ? data.records.map(function (item, index) {
         var picked = d.pickedFactory && d.pickedFactory.name === item.name;
@@ -276,92 +289,24 @@
     var f = d.finance;
     var material = (d.sourcing || []).reduce(function (sum, item) { return sum + (Number(item.price) || 0) * Number(item.amount || 0); }, 0);
     var labor = d.pickedFactory ? Number(d.pickedFactory.unitCost) : 0;
-    var body = '<div class="block"><h2>已知成本</h2><div class="kv"><span>物料</span><span>' + money(material) + '</span></div><div class="kv"><span>工厂加工</span><span>' + money(labor) + '</span></div></div><div class="block"><h2>填写真实费用</h2><input id="cost-price" inputmode="decimal" placeholder="单件售价"><input id="cost-fee" inputmode="decimal" placeholder="平台佣金百分比"><input id="cost-ship" inputmode="decimal" placeholder="单件快递"><input id="cost-pack" inputmode="decimal" placeholder="单件包装"><input id="cost-fixed" inputmode="decimal" placeholder="固定费用总额"><input id="cost-qty" inputmode="numeric" placeholder="生产数量"><button type="button" class="btn primary wide" data-act="run-finance">计算</button></div>';
+    var body = '<div class="block"><h2>已知成本</h2><div class="kv"><span>物料</span><span>' + money(material) + '</span></div><div class="kv"><span>工厂加工</span><span>' + money(labor) + '</span></div></div>' +
+      '<div class="block"><h2>填写真实费用</h2>' +
+      '<div class="grid2">' +
+        '<div><label for="cost-price">单件售价（元）</label><input id="cost-price" inputmode="decimal" placeholder="例如 899"></div>' +
+        '<div><label for="cost-fee">平台佣金（%）</label><input id="cost-fee" inputmode="decimal" placeholder="例如 5"></div>' +
+        '<div><label for="cost-ship">单件快递（元）</label><input id="cost-ship" inputmode="decimal" placeholder="例如 8"></div>' +
+        '<div><label for="cost-pack">单件包装（元）</label><input id="cost-pack" inputmode="decimal" placeholder="例如 3"></div>' +
+        '<div><label for="cost-fixed">固定费用总额（元）</label><input id="cost-fixed" inputmode="decimal" placeholder="例如 500"></div>' +
+        '<div><label for="cost-qty">生产数量（件）</label><input id="cost-qty" inputmode="numeric" placeholder="例如 100"></div>' +
+      '</div>' +
+      '<button type="button" class="btn primary wide" data-act="run-finance" style="margin-top:14px">计算</button></div>';
     if (f && !f.error) body += '<div class="block"><h2>结果</h2><div class="price">' + money(f.profit) + '<small> / 件利润</small></div><div class="hr"></div><div class="kv"><span>收入</span><span>' + money(f.income) + '</span></div><div class="kv"><span>生产成本</span><span class="bad">-' + money(f.cost * f.qty) + '</span></div><div class="kv"><span>平台佣金</span><span class="bad">-' + money(f.fee * f.qty) + '</span></div><div class="kv"><span>快递包装</span><span class="bad">-' + money((f.shipping + f.pack) * f.qty) + '</span></div><div class="kv"><span>总利润</span><span>' + money(f.totalProfit) + '</span></div><div class="kv"><span>利润率</span><span>' + f.margin.toFixed(1) + '%</span></div></div>';
     return screen("cost", "成本", "第 9 步，共 9 步", body);
   }
 
-  /* 历史 */
-  function vHistory(list) {
-    var body = "";
-    if (!list.length) {
-      body = '<div class="empty">还没有设计单。</div>';
-    } else {
-      body = '<div class="block"><h2>全部设计单</h2>' + list.map(function (d) {
-        var time = new Date(d.updatedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-        return '<button type="button" class="history-item" data-act="open-history" data-id="' + esc(d.id) + '">' +
-          '<span class="t">' + esc(d.prompt || "未命名设计单") + "</span>" +
-          '<span class="m">' + time + " · " + esc(stepName(d.step)) + (d.markedOriginal ? " · 原创" : "") + "</span></button>";
-      }).join("") + "</div>";
-    }
-    return '<div class="screen"><h1>历史</h1><p class="sub">共 ' + list.length + " 条</p>" + body + "</div>";
-  }
-
-  /* AI 搜索结果块（纯函数）：results 形如 {query,items:[{title,source,price,url}]} */
-  function aiResults(label, data) {
-    if (!data || !data.items || !data.items.length) {
-      return '<div class="block"><h2>' + esc(label) + '</h2>' +
-        '<p class="hint">还没有 AI 结果。点上面按钮让 AI 搜索。</p></div>';
-    }
-    return '<div class="block"><h2>' + esc(label) + '结果</h2>' +
-      '<p class="hint">搜索词：' + esc(data.query || "") + '</p>' +
-      '<p class="warn-note">以下为 AI 参考，不是平台实测。请逐条点开自行核实。</p>' +
-      '<div class="stack">' + data.items.map(function (it) {
-        var line = '<strong>' + esc(it.title || "（无标题）") + '</strong>';
-        var meta = [it.source, it.price].filter(Boolean).map(esc).join(" · ");
-        var link = it.url
-          ? '<a class="btn small" href="' + esc(it.url) + '" target="_blank" rel="noopener">打开</a>'
-          : '<span class="hint">无链接</span>';
-        return '<div class="hr"></div>' + line + (meta ? '<p class="hint">' + meta + "</p>" : "") + link;
-      }).join("") + "</div></div>";
-  }
-
-  /* 估价块（纯函数）：只做估算，不是最终成本；最终成本在第 9 步 */
-  function estimateBlock(d) {
-    var s = d.sourcing || [];
-    if (!s.length) return "";
-    var material = s.reduce(function (sum, item) { return sum + (Number(item.price) || 0) * Number(item.amount || 0); }, 0);
-    if (!material) {
-      return '<div class="block"><h2>估算价格</h2>' +
-        '<p class="hint">还没填采购单价，去「采购」步骤填完各部分单价后，这里会自动估算。</p></div>';
-    }
-    var bom = d.bom || {};
-    var labor = Number(bom.laborTotal || 0);
-    var fixed = Math.round(Number(bom.fixedTotal || 0) / 100);
-    var one = Math.round(material + labor + fixed);
-    var rec = Math.round(one / 0.35);              // 建议零售价 ≈ 成本 / 0.35（约 65% 毛利）
-    var floor = Math.round(one * 1.6);             // 保底价 ≈ 成本 × 1.6
-    return '<div class="block"><h2>估算价格</h2>' +
-      '<p class="hint">按已填采购单价 + 拆件工价估算。工厂报价后，第 9 步给精确成本。</p>' +
-      '<div class="kv"><span>物料（采购单价 × 用量）</span><span>' + money(material) + "</span></div>" +
-      '<div class="kv"><span>加工工时（拆件估算）</span><span>' + money(labor) + "</span></div>" +
-      '<div class="kv"><span>固定分摊（估算）</span><span>' + money(fixed) + "</span></div>" +
-      '<div class="price">' + money(one) + "<small> / 件估算成本</small></div>" +
-      '<div class="hr"></div>' +
-      '<div class="kv"><span>保底售价（成本 × 1.6）</span><span>' + money(floor) + "</span></div>" +
-      '<div class="kv"><span>建议零售价（约 65% 毛利）</span><span class="gold">' + money(rec) + "</span></div></div>";
-  }
-
-  // 接口列表（纯函数：数组+activeId+kind → HTML）
-  function epListHTML(list, activeId, kind) {
-    var k = kind === "image" ? "image" : "text";
-    if (!list.length) {
-      return '<div class="ep-empty muted">还没有接口。点下面「＋ 新增」开始。</div>';
-    }
-    return list.map(function (e) {
-      var on = e.id === activeId;
-      var dt = e.base ? esc(String(e.base).replace(/^https?:\/\//, "")) : "未填地址";
-      return '<button type="button" class="ep-item' + (on ? " on" : "") + '" data-act="ep-pick" data-kind="' + k + '" data-id="' + esc(e.id) + '">' +
-        (on ? '<span class="tk">用中</span>' : "") +
-        '<span class="nm">' + esc(e.name || "未命名") + "</span>" +
-        '<span class="dt">' + dt + "</span></button>";
-    }).join("");
-  }
-
   global.R = {
-    esc: esc, money: money, tabbar: tabbar, epListHTML: epListHTML,
-    aiResults: aiResults, estimateBlock: estimateBlock,
+    esc: esc, money: money, tabbar: tabbar,
     vWord: vWord, vImg: vImg, vPart: vPart, vCheck: vCheck, vBuy: vBuy,
-    vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost, vHistory: vHistory
+    vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost
   };
 })(window);

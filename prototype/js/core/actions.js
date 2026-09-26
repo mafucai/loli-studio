@@ -76,10 +76,49 @@
   ACT["pass-img"] = function () { patch("通过图", { imgPassed: true }); toast("已通过，去拆件"); };
   ACT["reject-img"] = function () { patch("驳回图", { imgUri: null, imgPassed: false }); };
 
-  ACT["gen-bom"] = function () {
+  ACT["gen-bom"] = async function () {
     var d = cur();
     if (!d || !d.words) { toast("先生成设计词"); return; }
-    patch("生成 BOM", { bom: Factory.bom(d.words) });
+    // 真实模式：让文本 AI 真拆件；失败或演示模式：回退本地零件表（明确标注来源）
+    if (AI.mode() === "real") {
+      toast("正在让 AI 拆件…");
+      var imgNote = d.imgUri ? (d.imgPassed ? "已通过审核的设计图" : "设计图") : "";
+      var res = await AI.splitBom(d.words, imgNote);
+      if (res && res.__error) {
+        report(res.__error + "（已回退本地零件表）");
+        patch("生成 BOM（本地）", { bom: Factory.bom(d.words) });
+        return;
+      }
+      var local = Factory.bom(d.words);
+      // 用 AI 的零件/工序，价格与固定成本沿用本地计算口径
+      var bom = {
+        rows: res.parts.map(function (p, i) {
+          var base = local.rows[i % local.rows.length];
+          return { part: p.part, material: p.material, amount: p.amount, unit: p.unit, price: base.price, subtotal: Math.round(p.amount * base.price), note: "" };
+        }),
+        labor: res.steps.length ? res.steps : local.labor,
+        words: d.words
+      };
+      bom.fabricTotal = bom.rows.reduce(function (s, r) { return s + (r.subtotal || 0); }, 0);
+      bom.fixedTotal = local.fixedTotal;
+      bom.laborTotal = local.laborTotal;
+      patch("AI 拆件", { bom: bom, bomSource: "ai" });
+      toast("AI 拆件完成，共 " + bom.rows.length + " 个零件");
+      return;
+    }
+    patch("生成 BOM（本地演示）", { bom: Factory.bom(d.words), bomSource: "demo" });
+  };
+
+  // AI 比价：给采购清单让文本 AI 判断哪家更便宜
+  ACT["ai-compare"] = async function () {
+    var d = cur();
+    if (!d || !d.sourcing || !d.sourcing.length) { toast("先生成采购清单"); return; }
+    if (AI.mode() !== "real") { toast("AI 比价需要先在接口设置里填文本接口"); return; }
+    toast("正在让 AI 比价…");
+    var res = await AI.comparePrice(d.sourcing);
+    if (res && res.__error) { report(res.__error); return; }
+    patch("AI 比价", { aiCompare: { items: res.items, at: new Date().toISOString() } });
+    toast("AI 给了 " + res.items.length + " 条省钱建议，请点链接核实真实价格");
   };
 
     ACT["run-check"] = function () {
@@ -202,6 +241,13 @@
     if (global.ST_VIEW === "history") {
       global.__render && __render();
     }
+  };
+
+  // 历史页两个标签：设计单 / 图片
+  ACT["hist-tab"] = function (el) {
+    var tab = (el && el.getAttribute("data-tab")) || "orders";
+    global.HIST_TAB = tab;
+    global.__render && __render();
   };
   ACT["open-history"] = function (el) {
     var id = el.getAttribute("data-id");

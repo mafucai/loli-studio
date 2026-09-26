@@ -25,6 +25,7 @@ var files = {
   "factory.js":       "js/core/factory.js",
   "store.js":         "js/core/store.js",
   "render.js":        "js/core/render.js",
+  "render-extra.js":  "js/core/render-extra.js",
   "settings.js":      "js/core/settings.js",
   "actions.js":       "js/core/actions.js",
   "main.js":          "js/core/main.js"
@@ -43,7 +44,7 @@ function assert(cond, msg) {
 Object.keys(files).forEach(function (k) { src[k] = read(k); });
 
 // 1. 渲染层禁 document.（含 code 行，排除注释）
-var codeOnly = src["render.js"].split("\n")
+var codeOnly = (src["render.js"] + "\n" + src["render-extra.js"]).split("\n")
   .filter(function (l) {
     var t = l.trim();
     return t && !t.startsWith("*") && !t.startsWith("//") && !t.startsWith("/*") && !t.startsWith("*/");
@@ -52,7 +53,7 @@ var codeOnly = src["render.js"].split("\n")
 assert(!/document\./.test(codeOnly), "1. 渲染层无 document.（含 code 行）");
 
 // 2. localStorage 只在 store.js
-["factory.js","render.js","ai.js","router.js","actions.js","main.js"].forEach(function (f) {
+["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","actions.js","main.js"].forEach(function (f) {
   // 排除注释
   var codeOnly = src[f].split("\n").filter(function (l) {
     var t = l.trim(); return t && !t.startsWith("*") && !t.startsWith("//");
@@ -92,6 +93,7 @@ while ((m = regex.exec(src["settings.js"]))) acts[m[1]] = true;
 var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
 while ((m = r2.exec(src["render.js"]))) usedActs[m[1]] = true;
+while ((m = r2.exec(src["render-extra.js"]))) usedActs[m[1]] = true;
 // 加上 main.js 里 run() 直接调用的
 var r3 = /Actions\.run\("([^"]+)"/g;
 while ((m = r3.exec(src["main.js"]))) usedActs[m[1]] = true;
@@ -111,7 +113,7 @@ assert(!/\.innerHTML/.test(factoryCode), "8c. factory 无 innerHTML.");
 assert(/K_D\s*=\s*"loli-studio\.designs\.v1"/.test(src["store.js"]), "9a. Store 声明 K_D");
 assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store 声明 K_C");
 // 其他模块不含这两个键名字符串
-["render.js","factory.js","ai.js","router.js","actions.js","main.js"].forEach(function (f) {
+["render.js","render-extra.js","factory.js","ai.js","router.js","settings.js","actions.js","main.js"].forEach(function (f) {
   assert(!/loli-studio\.designs\.v1/.test(src[f]) && !/loli-studio\.cfg\.v1/.test(src[f]),
     "9. " + f + " 不直接引用存储键名");
 });
@@ -119,13 +121,13 @@ assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store �
 // 10. 加载顺序依赖：index.html 加载顺序为 router→ai→factory→store→render→actions→main
 var htmlScripts = (src["index.html"].match(/src="([^"]+)"/g) || [])
   .map(function (s) { return s.match(/src="([^"]+)"/)[1]; });
-var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/settings.js","js/core/actions.js","js/core/main.js"];
+var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/actions.js","js/core/main.js"];
 // 顺序：router, ai, factory 是纯模块无依赖；store 也不依赖；render 依赖 Router/AI；actions 依赖 Store/Router/AI；main 依赖全部
 var orderIdx = {};
 expected.forEach(function (e, i) { orderIdx[e] = i; });
 var actualIdx = {};
 htmlScripts.forEach(function (s, i) { actualIdx[s] = i; });
-assert(htmlScripts.length === 8, "10a. index.html 加载 8 个脚本");
+assert(htmlScripts.length === 9, "10a. index.html 加载 9 个脚本");
 // render.js 必须在 router.js 后
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/router.js"], "10b. render 在 router 后");
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/ai.js"],     "10c. render 在 ai 后");

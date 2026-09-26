@@ -117,8 +117,79 @@
       return chat(query, { system: sys });
     }
 
+    // 让文本模型拆件：不依赖视觉模型，用设计词 + 图片描述文本
+    // 返回 { parts:[{part,material,amount,unit}], steps:[{step,time}] }
+    async function splitBom(words, imgNote) {
+      var desc = [
+        "风格：" + (words.style || ""),
+        "季节：" + (words.season || ""),
+        "主面料：" + (words.mainFabric || ""),
+        "颜色：" + (words.color || ""),
+        "细节：" + ((words.details || []).join("、")),
+        "装饰：" + ((words.decors || []).join("、")),
+        "尺码：" + ((words.sizes || []).join("、")),
+        imgNote ? "图片说明：" + imgNote : ""
+      ].filter(Boolean).join("\n");
+      var sys = "你是洛丽塔服装打版师。根据服装描述，拆出可采购的零件清单和制作工序。" +
+        "只返回 JSON，不要 Markdown。格式：{\"parts\":[{\"part\":\"零件名\",\"material\":\"材料\",\"amount\":数字,\"unit\":\"米/个/颗\"}]," +
+        "\"steps\":[{\"step\":\"工序名\",\"time\":\"小时\"}]}。" +
+        "parts 至少 8 项，steps 至少 6 项。材料用量要真实。";
+      var reply = await chat(desc, { system: sys });
+      if (reply && reply.__error) return { __error: reply.__error };
+      try {
+        var t = String(reply).replace(/^```json\s*|```$/g, "").trim();
+        var j = JSON.parse(t);
+        if (!j.parts || !j.parts.length) throw new Error("缺少 parts");
+        // 归一化：补默认字段
+        j.parts = j.parts.map(function (p) {
+          return {
+            part: String(p.part || "").slice(0, 40),
+            material: String(p.material || "").slice(0, 40),
+            amount: Number(p.amount) || 1,
+            unit: String(p.unit || "个").slice(0, 6)
+          };
+        }).filter(function (p) { return p.part; });
+        j.steps = (j.steps || []).map(function (s) {
+          return { step: String(s.step || "").slice(0, 30), time: String(s.time || "").slice(0, 12) };
+        }).filter(function (s) { return s.step; });
+        return j;
+      } catch (e) {
+        return { __error: "AI 拆件返回的不是有效 JSON：" + String(reply).slice(0, 160) };
+      }
+    }
+
+    // 让文本模型比价：给零件清单，返回每个零件「哪家可能更便宜 + 关键词」
+    // 注意：AI 只给参考判断，真实价格必须用户点链接自行核实
+    async function comparePrice(items) {
+      var list = items.map(function (it, i) {
+        return (i + 1) + ". " + it.part + "（" + it.material + "，" + it.amount + it.unit + "）";
+      }).join("\n");
+      var sys = "你是服装采购比价助手。根据零件清单，判断每个零件在哪类平台更可能便宜，" +
+        "并给出一句省钱建议。只返回 JSON 数组，不要 Markdown。" +
+        "每项字段：part（零件名）、best（建议平台之一：拼多多/1688/淘宝/闲鱼）、" +
+        "keyword（搜索关键词）、tip（一句话省钱建议）。不要编造具体价格和店铺。";
+      var reply = await chat(list, { system: sys });
+      if (reply && reply.__error) return { __error: reply.__error };
+      try {
+        var t = String(reply).replace(/^```json\s*|```$/g, "").trim();
+        var arr = JSON.parse(t);
+        if (!Array.isArray(arr)) throw new Error("不是数组");
+        return { items: arr.slice(0, 20).map(function (x) {
+          return {
+            part: String((x && x.part) || "").slice(0, 40),
+            best: String((x && x.best) || "").slice(0, 10),
+            keyword: String((x && x.keyword) || "").slice(0, 60),
+            tip: String((x && x.tip) || "").slice(0, 120)
+          };
+        }).filter(function (x) { return x.part; }) };
+      } catch (e) {
+        return { __error: "AI 比价返回的不是有效 JSON：" + String(reply).slice(0, 160) };
+      }
+    }
+
     global.AI = {
       chat: chat, mode: mode, imageMode: imageMode, img: imgDataUri, image: image,
-      srand: srand, listModels: listModels, searchWeb: searchWeb
+      srand: srand, listModels: listModels, searchWeb: searchWeb,
+      splitBom: splitBom, comparePrice: comparePrice
     };
 })(window);

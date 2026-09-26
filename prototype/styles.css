@@ -81,7 +81,10 @@ textarea,input{width:100%;padding:12px 14px;border:1px solid var(--line);border-
   background:var(--surface-2);color:var(--ink);outline:0}
 textarea{min-height:104px;resize:vertical;line-height:1.6}
 textarea:focus,input:focus{border-color:var(--gold)}
-label{display:block;margin:14px 0 6px;color:var(--ink-2);font-size:12px}
+label{display:block;margin:16px 0 8px;color:var(--ink-2);font-size:12px}
+.grid2 label{margin-top:0}
+.grid2 > div{margin-bottom:4px}
+.grid2 input{margin-bottom:0}
 .stack{display:flex;flex-direction:column;gap:10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
@@ -188,6 +191,17 @@ strong{color:var(--gold);font-weight:600}
 .mp-foot{margin-top:8px;font-size:10.5px;color:var(--ink-3)}
 .warn-note{margin-top:6px;padding:6px 8px;border-radius:7px;background:rgba(217,178,106,.1);
   color:var(--gold);font-size:11px;line-height:1.4}
+/* 历史页标签 */
+.tabs{display:flex;gap:8px;margin:12px 0}
+.tab{flex:1;padding:9px 0;border-radius:10px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--ink-2);font-size:13px}
+.tab.on{background:var(--gold-soft);color:var(--gold);border-color:var(--gold)}
+/* 图片历史网格 */
+.img-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.img-cell{display:flex;flex-direction:column;gap:4px;padding:0;border:0;background:none;text-align:left}
+.img-cell img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--surface-2)}
+.img-cell .cap{font-size:11.5px;color:var(--gold)}
+.img-cell .sub{font-size:10.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ep-sec{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .ep-sec:first-of-type{border-top:0;padding-top:0}
 .ep-title{font-size:13.5px;color:var(--gold);margin-bottom:6px}

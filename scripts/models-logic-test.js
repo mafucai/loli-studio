@@ -65,7 +65,7 @@ Object.defineProperty(ctx, "ST", { get: () => window.ST, set: v => { window.ST =
 Object.defineProperty(ctx, "ST_VIEW", { get: () => window.ST_VIEW, set: v => { window.ST_VIEW = v; }, configurable: true });
 Object.defineProperty(ctx, "__render", { get: () => window.__render, set: v => { window.__render = v; }, configurable: true });
 vm.createContext(ctx);
-["router.js","ai.js","store.js","factory.js","render.js","settings.js","actions.js","main.js"].forEach(f => {
+["router.js","ai.js","store.js","factory.js","render.js","render-extra.js","settings.js","actions.js","main.js"].forEach(f => {
   const code = fs.readFileSync(path.join(__dirname, "..", "prototype", "js", "core", f), "utf8");
   vm.runInContext(code, ctx, { filename: f });
 });

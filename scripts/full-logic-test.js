@@ -73,7 +73,7 @@ Object.defineProperty(ctx, "ST", { get: () => window.ST, set: v => { window.ST =
 Object.defineProperty(ctx, "ST_VIEW", { get: () => window.ST_VIEW, set: v => { window.ST_VIEW = v; }, configurable: true });
 Object.defineProperty(ctx, "__render", { get: () => window.__render, set: v => { window.__render = v; }, configurable: true });
 vm.createContext(ctx);
-["router.js","ai.js","store.js","factory.js","render.js","settings.js","actions.js","main.js"].forEach(f => {
+["router.js","ai.js","store.js","factory.js","render.js","render-extra.js","settings.js","actions.js","main.js"].forEach(f => {
   const code = fs.readFileSync(path.join(__dirname, "..", "prototype", "js", "core", f), "utf8");
   vm.runInContext(code, ctx, { filename: f });
 });
@@ -246,6 +246,37 @@ ok("查重页含 AI 搜索按钮", chkHTML.indexOf('data-act="ai-search"') >= 0)
 S.patch(dz.id, { factories: window.Factory.factories() }, "工厂");
 const factHTML = R.vFact(S.getDesign(dz.id));
 ok("工厂页含 AI 搜索按钮", factHTML.indexOf('data-where="fact"') >= 0);
+
+console.log("— 17. AI 拆件 / AI 比价 API 存在 —");
+ok("AI.splitBom 是函数", typeof AI.splitBom === "function");
+ok("AI.comparePrice 是函数", typeof AI.comparePrice === "function");
+ok("拆件按钮存在", R.vPart(S.getDesign(dz.id)).length > 0);
+
+console.log("— 18. 比价块 + 采购页 —");
+S.patch(dz.id, { aiCompare: { items: [{ part: "裙撑", best: "1688", keyword: "蕾丝硬纱 裙撑", tip: "1688 按米买更便宜" }] } }, "比价");
+const buyHTML = R.vBuy(S.getDesign(dz.id));
+ok("采购页含 AI 比价按钮", buyHTML.indexOf('data-act="ai-compare"') >= 0);
+ok("采购页显示比价结果", buyHTML.indexOf("1688") >= 0 && buyHTML.indexOf("裙撑") >= 0);
+
+console.log("— 19. 拆件来源标注 —");
+S.patch(dz.id, { bomSource: "ai" }, "标AI");
+ok("AI 拆件标注来源", R.vPart(S.getDesign(dz.id)).indexOf("由文本 AI 拆解") >= 0);
+S.patch(dz.id, { bomSource: "demo" }, "标演示");
+ok("本地拆件标注演示", R.vPart(S.getDesign(dz.id)).indexOf("本地零件库生成") >= 0);
+
+console.log("— 20. 图片历史（标签 + 汇总）—");
+S.patch(dz.id, { imgUri: "data:image/svg+xml,design" }, "加设计图");
+const listAll = S.listDesigns();
+const ordHTML = R.vHistory(listAll);
+ok("历史页含两个标签", ordHTML.indexOf('data-tab="orders"') >= 0 && ordHTML.indexOf('data-tab="images"') >= 0);
+ok("默认显示设计单", ordHTML.indexOf("全部设计单") >= 0);
+window.HIST_TAB = "images";
+const imgHTML = R.vHistory(listAll);
+ok("切到图片标签", imgHTML.indexOf("全部图片") >= 0);
+ok("图片历史含设计图", imgHTML.indexOf("设计图") >= 0);
+ok("图片历史含组合图", imgHTML.indexOf("组合图") >= 0);
+ok("图片历史用网格", imgHTML.indexOf("img-grid") >= 0);
+window.HIST_TAB = undefined;
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + pass + "  ❌ 失败 " + fail);
