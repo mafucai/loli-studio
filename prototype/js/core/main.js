@@ -116,21 +116,43 @@
     render();
   }
 
-  // 全局错误兜底：不吞错，把信息显出来
-    window.addEventListener("unhandledrejection", function (ev) {
-      var reason = ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason || "未知异步错误");
-      Actions.report(reason);
-    });
+  // 全局错误兜底：不吞错，把信息显出来。
+  // 双通道上报：1) 页面红框（浏览器/APK 都可见）2) Native 桥（仅 APK，进 logcat + 原生红框）
+  function reportToNative(msg) {
+    try {
+      if (window.NativeErrorBridge && window.NativeErrorBridge.logError) {
+        window.NativeErrorBridge.logError(String(msg));
+      }
+    } catch (_) { /* 桥不可用（浏览器）时静默 */ }
+  }
+
+  window.addEventListener("unhandledrejection", function (ev) {
+    var reason = ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason || "未知异步错误");
+    Actions.report(reason);
+    reportToNative("unhandledrejection: " + reason);
+  });
+
+  // 捕获阶段：资源加载失败（IMG/SCRIPT/LINK）不冒泡，只有 capture 能抓到
   window.addEventListener("error", function (ev) {
+    var t = ev.target;
+    var msg;
+    if (t && t.tagName && /^(IMG|SCRIPT|LINK)$/.test(t.tagName)) {
+      msg = "资源加载失败: " + t.tagName + " " + (t.src || t.href || "");
+    } else {
+      msg = (ev.message || ev.error || "未知错误")
+          + (ev.filename ? " · " + ev.filename + ":" + ev.lineno : "");
+    }
     var b = document.getElementById("boot-error");
     if (!b) {
       b = document.createElement("div");
       b.id = "boot-error";
       b.style.cssText = "color:#d96b6b;font-size:11px;padding:8px;background:rgba(217,107,107,.1);border-radius:6px;margin:8px";
-      document.body.insertBefore(b, document.body.firstChild);
+      if (document.body) document.body.insertBefore(b, document.body.firstChild);
+      else document.documentElement.appendChild(b);
     }
-    Actions.report((ev.message || ev.error || "未知错误") + (ev.filename ? " · " + ev.filename + ":" + ev.lineno : ""));
-  });
+    Actions.report(msg);
+    reportToNative(msg);
+  }, true);
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

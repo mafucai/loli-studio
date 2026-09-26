@@ -1,0 +1,367 @@
+/* 纯渲染层：只返回 HTML 字符串，禁 document.（用 grep 断言）
+ * 结构统一为：screen(标题 + 进度点 + 内容块)，每个界面最多三块。
+ */
+(function (global) {
+  "use strict";
+
+  var PAGES = [
+    { id: "design", title: "设计", head: "word",  steps: ["word", "img", "part"] },
+    { id: "make",   title: "制作", head: "check", steps: ["check", "buy", "look"] },
+    { id: "run",    title: "经营", head: "model", steps: ["model", "fact", "cost"] }
+  ];
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function money(n) {
+    n = Math.round(Number(n) || 0);
+    return (n < 0 ? "-" : "") + "¥" + Math.abs(n).toLocaleString("zh-CN");
+  }
+  function stepName(id) {
+    var list = global.Router && Router.STEPS;
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i].title;
+    return "";
+  }
+  function pageOf(id) {
+    for (var i = 0; i < PAGES.length; i++) if (PAGES[i].steps.indexOf(id) >= 0) return PAGES[i];
+    return PAGES[0];
+  }
+
+  /* 底部三个主入口 */
+  function tabbar(curId) {
+    var page = pageOf(curId);
+    return PAGES.map(function (item) {
+      return '<button type="button" class="tab' + (item.id === page.id ? " cur" : "") +
+        '" data-act="goto" data-step="' + item.head + '"><i></i><span>' + item.title + "</span></button>";
+    }).join("");
+  }
+
+  /* 页内三点进度 */
+  function dots(curId) {
+    var page = pageOf(curId);
+    var at = page.steps.indexOf(curId);
+    var out = "";
+    for (var i = 0; i < 3; i++) out += '<b class="' + (i === at ? "on" : "") + '"></b>';
+    return '<div class="dots">' + out + "</div>";
+  }
+
+  /* 统一页面骨架 */
+  function screen(curId, title, sub, body) {
+    return '<div class="screen">' + dots(curId) + "<h1>" + title + "</h1>" +
+      '<p class="sub">' + sub + "</p>" + body + pageBar(curId) + "</div>";
+  }
+
+  function menu(step, title, text) {
+    return '<button type="button" class="menu-card" data-act="goto" data-step="' + step +
+      '"><span><b>' + title + "</b><small>" + text + "</small></span><em>›</em></button>";
+  }
+
+  var ORDER = Router.STEPS.map(function (x) { return x.id; });
+  function pageBar(curId) {
+    var i = ORDER.indexOf(curId);
+    var back = i > 0
+      ? '<button type="button" class="btn" data-act="goto" data-step="' + ORDER[i - 1] + '">返回</button>'
+      : '<button type="button" class="btn" data-act="history">历史</button>';
+    return '<div class="actions">' + back +
+      '<button type="button" class="btn" data-act="keep">保存</button>' +
+
+    function nextBtn(step, label) {
+      return '<button type="button" class="btn bad" data-act="del-cur">删除</button></div>';
+    }
+    return '<button type="button" class="btn primary wide" data-act="next" data-step="' + step +
+      '">' + label + "</button>";
+  }
+
+  /* 1 设计词 */
+  function vWord(d) {
+    var w = d.words;
+    var body = '<div class="block">' + menu("word", "设计词", "生成款式、颜色和面料") +
+      menu("img", "出图", "看一眼，满意再往下") + menu("part", "拆件", "拆成物料和工序") + "</div>";
+
+    body += '<div class="block"><h2>填写需求</h2>' +
+      '<textarea id="in-prompt" placeholder="例：雾霾蓝英式下午茶，春夏薄款，蝴蝶结收腰">' +
+      esc(d.prompt || "") + "</textarea>" +
+      '<button type="button" class="btn primary wide" data-act="gen-words">生成设计词</button></div>';
+
+    if (w) {
+      body += '<div class="block"><h2>结果</h2>' +
+        '<div class="kv"><span>风格</span><span>' + esc(w.style) + "</span></div>" +
+        '<div class="kv"><span>季节</span><span>' + esc(w.season) + "</span></div>" +
+        '<div class="kv"><span>主面料</span><span>' + esc(w.mainFabric) + "</span></div>" +
+        '<div class="kv"><span>主色</span><span>' + esc(w.color) + "</span></div>" +
+        '<div style="margin-top:12px">' +
+        w.details.map(function (x) { return '<span class="tag">' + esc(x) + "</span>"; }).join("") +
+        w.decors.map(function (x) { return '<span class="tag plain">' + esc(x) + "</span>"; }).join("") +
+        "</div>" + (w.mood ? '<p class="note">' + esc(w.mood) + "</p>" : "") + "</div>";
+      body += nextBtn("img", "下一步 · 出图");
+    }
+    return screen("word", "设计", "第 1 步，共 9 步", body);
+  }
+
+  /* 2 出图 */
+  function vImg(d) {
+    var body = "";
+    if (!d.imgUri) {
+      body += '<div class="block"><h2>候选图</h2>' +
+        '<p class="hint">还没有图。生成一张看看，不满意可以重画。</p>' +
+        '<button type="button" class="btn primary wide" data-act="gen-img">生成候选图</button></div>';
+    } else {
+      body += '<div class="block"><h2>候选图</h2>' +
+        '<img class="card-img tall" src="' + esc(d.imgUri) + '" alt="候选图">' +
+        '<div class="actions">' +
+        '<button type="button" class="btn bad" data-act="reject-img">重画</button>' +
+        '<button type="button" class="btn ok" data-act="pass-img">通过</button></div>' +
+        '<button type="button" class="btn wide small" data-act="gen-img">再生成一张</button></div>';
+    }
+    if (d.imgPassed) body += nextBtn("part", "下一步 · 拆件");
+    return screen("img", "出图", d.imgPassed ? "已通过，可以去拆件" : "第 2 步，共 9 步", body);
+  }
+
+  /* 3 拆件 */
+  function vPart(d) {
+    var b = d.bom;
+    var body = "";
+    if (!b) {
+      body += '<div class="block"><h2>物料清单</h2>' +
+        '<p class="hint">先通过上一步的图片，再拆件。</p>' +
+        '<button type="button" class="btn primary wide" data-act="gen-bom">生成清单</button></div>';
+    } else {
+      body += '<div class="block"><h2>物料</h2><div class="scroll-x"><table><thead><tr>' +
+        "<th>零件</th><th>材料</th><th>用量</th><th>价</th></tr></thead><tbody>" +
+        b.rows.map(function (r) {
+          return "<tr><td>" + esc(r.part) + '<div class="muted" style="font-size:11px">' + esc(r.note) + "</div></td>" +
+            "<td>" + esc(r.material) + '</td><td class="num">' + r.amount + esc(r.unit) + "</td>" +
+            '<td class="num">' + money(r.subtotal) + "</td></tr>";
+        }).join("") + "</tbody></table></div></div>";
+
+      body += '<div class="block"><h2>工序</h2><div class="scroll-x"><table><thead><tr>' +
+        "<th>工序</th><th>工时</th><th>成本</th></tr></thead><tbody>" +
+        b.labor.map(function (l) {
+          return "<tr><td>" + esc(l.step) + '</td><td class="num">' + esc(l.time) +
+            '</td><td class="num">' + money(l.cost) + "</td></tr>";
+        }).join("") + "</tbody></table></div>" +
+        '<div class="hr"></div>' +
+        '<div class="kv"><span>面料辅料</span><span>' + money(b.fabricTotal) + "</span></div>" +
+        '<div class="kv"><span>工时</span><span>' + money(b.laborTotal) + "</span></div>" +
+        '<div class="kv"><span>固定成本</span><span>' + money(b.fixedTotal) + "</span></div>" +
+        '<div class="kv"><span>样衣单件成本</span><span>' + money(b.total) + "</span></div>" +
+        nextBtn("check", "下一步 · 查重") + "</div>";
+    }
+    return screen("part", "拆件", "第 3 步，共 9 步", body);
+  }
+
+  /* 4 查重 */
+  function vCheck(d) {
+    var c = d.check;
+    var body = '<div class="block">' + menu("check", "查重", "先看有没有一样的") +
+      menu("buy", "采购", "买料，看实物") + menu("look", "组合", "拼起来是什么样") + "</div>";
+    if (!c) {
+      body += '<div class="block"><h2>查重</h2>' +
+        '<p class="hint">扫描五个平台的相似款，最高相似度低于 70% 才算原创。</p>' +
+        '<button type="button" class="btn primary wide" data-act="run-check">开始查重</button></div>';
+    } else {
+      body += '<div class="block"><h2>结果</h2><div class="scroll-x"><table><thead><tr>' +
+        "<th>平台</th><th>相似款</th><th>最高</th><th>判定</th></tr></thead><tbody>" +
+        c.results.map(function (r) {
+          var cls = r.verdict === "原创" ? "ok" : (r.verdict === "相近" ? "warn" : "bad");
+          return '<tr><td><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.platform) + "</a></td>" +
+            '<td class="num">' + r.hits + '</td><td class="num">' + r.maxSim + "%</td>" +
+            '<td><span class="tag ' + cls + '">' + esc(r.verdict) + "</span></td></tr>";
+        }).join("") + "</tbody></table></div>" +
+        '<p class="note">' + esc(c.worst.note) + "</p>" +
+        '<p class="hint">演示数据，不是平台实时结果。</p></div>';
+
+      if (d.markedOriginal) {
+        body += '<div class="block" style="text-align:center"><span class="origil">原创</span>' +
+          nextBtn("buy", "下一步 · 采购") + "</div>";
+      } else if (c.pass) {
+        body += '<div class="block"><h2>原创确认</h2>' +
+          '<p class="hint">没有雷同款，可以标原创。</p>' +
+          '<button type="button" class="btn ok wide" data-act="mark-original">标为原创</button></div>';
+      } else {
+        body += '<div class="block"><h2>需要修改</h2>' +
+          '<p class="hint">有雷同款，建议改主色或廓形后重新查重。</p>' +
+          '<button type="button" class="btn bad wide" data-act="reject-original">回设计词改款</button></div>';
+      }
+    }
+    return screen("check", "查重", "第 4 步，共 9 步", body);
+  }
+
+  /* 5 采购 */
+  function vBuy(d) {
+    var s = d.sourcing;
+    var body = "";
+    if (!s) {
+      body += '<div class="block"><h2>采购</h2>' +
+        '<p class="hint">先标原创，再拉采购清单。</p>' +
+        '<button type="button" class="btn primary wide" data-act="run-sourcing">拉清单</button></div>';
+    } else {
+      body += '<div class="block"><h2>清单</h2><div class="scroll-x"><table><thead><tr>' +
+        "<th>零件</th><th>渠道</th><th>单价</th><th>省</th></tr></thead><tbody>" +
+        s.map(function (r) {
+          var row = d.bom ? d.bom.rows.filter(function (x) { return x.part === r.part; })[0] : null;
+          var save = row ? row.subtotal - r.priceBest * r.amount : 0;
+          return "<tr><td>" + esc(r.part) + '<div class="muted" style="font-size:11px">' +
+            esc(r.material) + " ×" + r.amount + esc(r.unit) + "</div></td>" +
+            '<td><a href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.channel) + "</a>" +
+            '<div class="muted" style="font-size:11px">备选 ' + esc(r.alt) + "</div></td>" +
+            '<td class="num">' + money(r.priceBest) + "</td>" +
+            '<td class="num ok">' + money(save) + "</td></tr>";
+        }).join("") + "</tbody></table></div></div>";
+
+      body += '<div class="block"><h2>实物参考</h2><div class="grid2">' +
+        [["主裙身", "dress"], ["裙撑", "detail"], ["袖口", "look"], ["蝴蝶结", "combo"]].map(function (x) {
+          return "<div><img class=\"card-img sq\" src=\"" +
+            esc(AI.img(x[1], x[0] + (d.bom ? d.bom.words.color : ""), 200, 200)) +
+            '" alt="' + esc(x[0]) + '"><p class="caption">' + esc(x[0]) + "</p></div>";
+        }).join("") + "</div>" +
+        '<p class="hint">演示图，实物以平台页面为准。</p></div>';
+
+      body += nextBtn("look", "下一步 · 组合");
+    }
+    return screen("buy", "采购", "第 5 步，共 9 步", body);
+  }
+
+  /* 6 组合 */
+  function vLook(d) {
+    var c = d.combo;
+    var b = d.bom;
+    var body = "";
+    if (!c) {
+      body += '<div class="block"><h2>组合</h2>' +
+        '<p class="hint">先完成采购，再合成组合图。</p>' +
+        '<button type="button" class="btn primary wide" data-act="gen-combo">合成组合图</button></div>';
+    } else {
+      body += '<div class="block"><h2>组合实况</h2>' +
+        '<img class="card-img wide" src="' + esc(c.uri) + '" alt="组合实况">' +
+        '<p class="note">' + esc(c.note) + "</p></div>";
+      if (b) {
+        var fabric = Math.round(b.fabricTotal * 0.75);
+        var labor = Math.round(b.laborTotal * 0.55);
+        var fixed = Math.round(b.fixedTotal / 100);
+        body += '<div class="block"><h2>按采购价重算</h2>' +
+          '<div class="kv"><span>面料辅料</span><span>' + money(fabric) + "</span></div>" +
+          '<div class="kv"><span>工时</span><span>' + money(labor) + "</span></div>" +
+          '<div class="kv"><span>固定成本</span><span>' + money(fixed) + "</span></div>" +
+          '<div class="kv"><span>大货单件成本</span><span>' + money(fabric + labor + fixed) + "</span></div>" +
+          "</div>";
+      }
+      body += nextBtn("model", "下一步 · 模特");
+    }
+    return screen("look", "组合", "第 6 步，共 9 步", body);
+  }
+
+  /* 7 模特 */
+  function vModel(d) {
+    var m = d.model;
+    var body = '<div class="block">' + menu("model", "模特", "穿在身上什么样") +
+      menu("fact", "工厂", "找谁生产") + menu("cost", "成本", "一件赚多少") + "</div>";
+    if (!m) {
+      body += '<div class="block"><h2>模特图</h2>' +
+        '<p class="hint">先完成组合，再生成模特图。</p>' +
+        '<button type="button" class="btn primary wide" data-act="gen-model">生成模特图</button></div>';
+    } else {
+      body += '<div class="block"><h2>穿着效果</h2><div class="grid2">' +
+        '<img class="card-img thin" src="' + esc(m.uri) + '" alt="正面">' +
+        '<img class="card-img thin" src="' +
+        esc(AI.img("model", (d.bom ? d.bom.words.style : "") + "back", 200, 400)) + '" alt="背面">' +
+        "</div><p class=\"note\">" + esc(m.note) + "</p></div>" +
+        nextBtn("fact", "下一步 · 工厂");
+    }
+    return screen("model", "模特", "第 7 步，共 9 步", body);
+  }
+
+  /* 8 工厂 */
+  function vFact(d) {
+    var list = d.factories;
+    var body = "";
+    if (!list) {
+      body += '<div class="block"><h2>工厂</h2>' +
+        '<p class="hint">先完成模特图，再找工厂。</p>' +
+        '<button type="button" class="btn primary wide" data-act="run-factories">查找工厂</button></div>';
+    } else {
+      body += '<div class="block"><h2>候选</h2>' +
+        list.slice().sort(function (a, b) { return a.unitCost - b.unitCost; }).map(function (f, i) {
+          var picked = d.pickedFactory && d.pickedFactory.name === f.name;
+          return '<div class="hr"></div>' +
+            '<div class="row between"><strong>' + esc(f.name) + "</strong>" +
+            '<span class="price" style="font-size:17px">' + money(f.unitCost) + '<small>/件</small></span></div>' +
+            '<p class="hint">' + esc(f.region) + " · " + esc(f.scale) + " · 起订 " + f.min + " 件 · " + esc(f.leadTime) + "</p>" +
+            '<div style="margin-top:8px">' + f.tags.map(function (t) { return '<span class="tag plain">' + esc(t) + "</span>"; }).join("") + "</div>" +
+            '<div class="actions">' +
+            '<button type="button" class="btn small" data-act="call-fact" data-idx="' + list.indexOf(f) + '">联系电话</button>' +
+            '<button type="button" class="btn small ' + (picked ? "primary" : "") + '" data-act="pick-fact" data-idx="' +
+            list.indexOf(f) + '">' + (picked ? "已选择" : "选这家") + "</button>" +
+            '<a class="btn small" href="' + esc(f.link) + '" target="_blank" rel="noopener">1688</a></div>';
+        }).join("") +
+        '<p class="hint">演示数据，联系方式未核实。</p></div>';
+      if (d.pickedFactory) body += nextBtn("cost", "下一步 · 成本");
+    }
+    return screen("fact", "工厂", "第 8 步，共 9 步", body);
+  }
+
+  /* 9 成本 */
+  function vCost(d) {
+    var f = d.finance;
+    var body = "";
+    if (!f) {
+      body += '<div class="block"><h2>成本</h2>' +
+        '<p class="hint">先在工厂页选一家。</p>' +
+        '<button type="button" class="btn primary wide" data-act="run-finance">开始计算</button></div>';
+    } else {
+      var rec = f.tiers[1] || f.tiers[0];
+      body += '<div class="block"><h2>单件成本</h2>' +
+        '<div class="kv"><span>面料辅料</span><span>' + money(f.materialCost) + "</span></div>" +
+        '<div class="kv"><span>工时</span><span>' + money(f.laborPerUnit) + "</span></div>" +
+        '<div class="kv"><span>固定成本（按量摊）</span><span>' + money(f.fixedPerUnit) + "</span></div>" +
+        '<div class="kv"><span>合作工厂</span><span>' + esc(d.pickedFactory ? d.pickedFactory.name : "未选") + "</span></div></div>";
+
+      body += '<div class="block"><h2>不同起订量</h2><div class="scroll-x"><table><thead><tr>' +
+        "<th>量</th><th>成本</th><th>淘宝</th><th>拼多多</th><th>毛利</th></tr></thead><tbody>" +
+        f.tiers.map(function (t) {
+          return '<tr><td class="num">' + t.qty + "</td>" +
+            '<td class="num">' + money(t.costPerUnit) + "</td>" +
+            '<td class="num">' + money(t.retailTb) + "</td>" +
+            '<td class="num">' + money(t.retailPdd) + "</td>" +
+            '<td class="num ok">' + money(t.profitTb) + "</td></tr>";
+        }).join("") + "</tbody></table></div></div>";
+
+      body += '<div class="block"><h2>收入与支出（' + rec.qty + " 件档）</h2>" +
+        '<div class="price">' + money(rec.profitTb) + "<small> / 件毛利</small></div>" +
+        '<div class="hr"></div>' +
+        '<div class="kv"><span>售价（淘宝）</span><span>' + money(rec.retailTb) + "</span></div>" +
+        '<div class="kv"><span>平台佣金</span><span class="bad">-' + money(rec.fee) + "</span></div>" +
+        '<div class="kv"><span>快递</span><span class="bad">-' + money(rec.ship) + "</span></div>" +
+        '<div class="kv"><span>包装</span><span class="bad">-' + money(rec.pack) + "</span></div>" +
+        '<div class="kv"><span>生产成本</span><span class="bad">-' + money(rec.costPerUnit) + "</span></div>" +
+        '<div class="kv"><span>毛利率</span><span>' + rec.marginTb + "%</span></div>" +
+        '<div class="kv"><span>总毛利</span><span>' + money(rec.grossTb) + "</span></div>" +
+        '<p class="note">演示测算，实际以工厂报价为准。</p></div>';
+    }
+    return screen("cost", "成本", "第 9 步，共 9 步", body);
+  }
+
+  /* 历史 */
+  function vHistory(list) {
+    var body = "";
+    if (!list.length) {
+      body = '<div class="empty">还没有设计单。</div>';
+    } else {
+      body = '<div class="block"><h2>全部设计单</h2>' + list.map(function (d) {
+        var time = new Date(d.updatedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+        return '<button type="button" class="history-item" data-act="open-history" data-id="' + esc(d.id) + '">' +
+          '<span class="t">' + esc(d.prompt || "未命名设计单") + "</span>" +
+          '<span class="m">' + time + " · " + esc(stepName(d.step)) + (d.markedOriginal ? " · 原创" : "") + "</span></button>";
+      }).join("") + "</div>";
+    }
+    return '<div class="screen"><h1>历史</h1><p class="sub">共 ' + list.length + " 条</p>" + body + "</div>";
+  }
+
+  global.R = {
+    esc: esc, money: money, tabbar: tabbar,
+    vWord: vWord, vImg: vImg, vPart: vPart, vCheck: vCheck, vBuy: vBuy,
+    vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost, vHistory: vHistory
+  };
+})(window);
