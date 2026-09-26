@@ -55,10 +55,12 @@ jobs:
           echo "选定产物: ${UNSIGNED}"
           SIGNED="app/build/outputs/apk/release/lolistudio-release.apk"
 
-          # 2) Secrets 有效则用固定签名；为空或无效（base64 坏/空文件）则回退临时 keystore
-          #    关键：坏 secret 不能杀死整个流程（旧版 test -s 失败会 set -e 退出，见 run 36231445728）
+          # 2) Secrets 有效则用固定签名；为空/无效/缺密码则回退临时 keystore
+          #    关键：坏 secret 或缺 password 都不能杀死整个流程，全部改用 ${VAR:-} 形式避开 set -u
+          #    旧版实测：run 36231445728 坏 base64；run 36231730025 缺 KEYSTORE_PASSWORD（unbound variable）
           USE_FIXED=0
           if [ -n "${KEYSTORE_B64:-}" ] \
+             && [ -n "${KEYSTORE_PASS:-}" ] \
              && printf '%s' "${KEYSTORE_B64}" | base64 -d > release-fixed.jks 2>/dev/null \
              && [ -s release-fixed.jks ]; then
             USE_FIXED=1
@@ -67,10 +69,10 @@ jobs:
           if [ "${USE_FIXED}" = "1" ]; then
             echo "使用 Secrets 中的固定签名（可覆盖安装）"
             KS_PASS="${KEYSTORE_PASS}"
-            KS_ALIAS="${KEYSTORE_ALIAS_NAME}"
-            KS_KEYPASS="${KEY_PASS:-${KEYSTORE_PASSWORD}}"
+            KS_ALIAS="${KEYSTORE_ALIAS_NAME:-androiddebugkey}"
+            KS_KEYPASS="${KEY_PASS:-${KEYSTORE_PASS}}"
           else
-            echo "::warning::KEYSTORE_BASE64 为空或无效，回退临时 keystore（验证包，不能覆盖安装正式包）"
+            echo "::warning::KEYSTORE_BASE64/KEYSTORE_PASSWORD 缺失或无效，回退临时 keystore（验证包，不能覆盖安装正式包）"
             KS_PASS="android"
             KS_ALIAS="androiddebugkey"
             KS_KEYPASS="android"
