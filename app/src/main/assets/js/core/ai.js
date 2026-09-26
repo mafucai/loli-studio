@@ -62,27 +62,46 @@
       var shapes=""; for(var i=0;i<14;i++){var x=Math.floor(rnd()*w),y=Math.floor(rnd()*h),r=20+Math.floor(rnd()*120),o=(0.06+rnd()*0.18).toFixed(3); shapes+='<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+palette[i%3]+'" opacity="'+o+'"/>';}
       return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="#1b1815"/>'+shapes+'<text x="50%" y="54%" text-anchor="middle" fill="#d9b26a" font-family="serif" font-size="20">演示图</text></svg>');
     }
-    // 把外链图片转成 data URI（部分 WebView 会拦 file:// 页面加载外链图片）
-    // 失败时原样返回，让 <img> 自己去试
-    async function urlToDataUri(url, timeoutMs) {
-      if (!/^https:\/\//i.test(url)) return url;
-      var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs || 30000) : null;
-      try {
-        var r = await fetch(url, { signal: ctrl ? ctrl.signal : undefined });
-        if (!r.ok) return url;
-        var blob = await r.blob();
-        return await new Promise(function (resolve) {
-          var fr = new FileReader();
-          fr.onload = function () { resolve(String(fr.result || url)); };
-          fr.onerror = function () { resolve(url); };
-          fr.readAsDataURL(blob);
+    // 把外链图片转成 data URI。
+    // 优先走原生桥 fetchImageAsDataUri（无 CORS/混合来源限制）；
+    // 浏览器里没有桥时退回 JS fetch（可能被 CORS 拦，那就原样返回让 <img> 试）。
+    function urlToDataUri(url, timeoutMs) {
+      if (!/^https:\/\//i.test(url)) return Promise.resolve(url);
+      var bridge = global.NativeErrorBridge;
+      if (bridge && typeof bridge.fetchImageAsDataUri === "function") {
+        return new Promise(function (resolve) {
+          var name = "__imgcb_" + Math.floor(Math.random() * 1e9);
+          var done = false;
+          var timer = setTimeout(function () {
+            if (done) return; done = true;
+            delete global[name];
+            resolve(url);   // 超时退回原链
+          }, (timeoutMs || 90000) + 15000);
+          global[name] = function (dataUri) {
+            if (done) return; done = true;
+            clearTimeout(timer);
+            delete global[name];
+            resolve(dataUri && dataUri.length > 30 ? dataUri : url);
+          };
+          try {
+            bridge.fetchImageAsDataUri(url, name);
+          } catch (e) {
+            clearTimeout(timer); delete global[name]; resolve(url);
+          }
         });
-      } catch (e) {
-        return url;
-      } finally {
-        if (timer) clearTimeout(timer);
       }
+      // 浏览器兜底
+      return new Promise(function (resolve) {
+        fetch(url).then(function (r) {
+          if (!r.ok) return resolve(url);
+          return r.blob().then(function (blob) {
+            var fr = new FileReader();
+            fr.onload = function () { resolve(String(fr.result || url)); };
+            fr.onerror = function () { resolve(url); };
+            fr.readAsDataURL(blob);
+          });
+        }).catch(function () { resolve(url); });
+      });
     }
 
     // 单次图片请求（可指定参数），带超时

@@ -145,6 +145,80 @@ public class MainActivity extends Activity {
                 }
             });
         }
+
+        // 原生下载图片，完成后回调 JS。不阻塞 WebView 线程（避免页面卡死）。
+        // 为什么需要它：页面是 file://，JS fetch 外链图会被 CORS 拦，
+        // <img> 直接加载外链又会被混合来源拦。原生下载没有这些限制。
+        @JavascriptInterface
+        public void fetchImageAsDataUri(final String url, final String callbackName) {
+            if (url == null || !url.startsWith("https://")) {
+                callJs(callbackName, "");
+                return;
+            }
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    final String dataUri = downloadAsDataUri(url);
+                    if (webView != null) {
+                        webView.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                callJs(callbackName, dataUri);
+                            }
+                        });
+                    }
+                }
+            }).start();
+        }
+
+        private void callJs(String callbackName, String payload) {
+            if (webView == null) return;
+            String safeName = (callbackName == null || !callbackName.matches("[A-Za-z0-9_]+"))
+                    ? "" : callbackName;
+            if (safeName.isEmpty()) return;
+            String quoted;
+            try { quoted = JSONObject.quote(payload == null ? "" : payload); }
+            catch (Exception e) { return; }
+            webView.evaluateJavascript(
+                "try{window['" + safeName + "'] && window['" + safeName + "'](" + quoted + ");}catch(e){}", null);
+        }
+
+        private String downloadAsDataUri(String url) {
+            java.net.HttpURLConnection conn = null;
+            try {
+                java.net.URL u = new java.net.URL(url);
+                conn = (java.net.HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "LoliStudio/1.0");
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) {
+                    Log.e(TAG, "fetchImage HTTP " + code + " " + url);
+                    return "";
+                }
+                String type = conn.getContentType();
+                if (type == null || type.indexOf("image/") < 0) type = "image/jpeg";
+                java.io.InputStream in = conn.getInputStream();
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                long total = 0;
+                while ((n = in.read(buf)) > 0) {
+                    total += n;
+                    if (total > 12L * 1024 * 1024) { in.close(); return ""; }
+                    bos.write(buf, 0, n);
+                }
+                in.close();
+                String b64 = android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP);
+                return "data:" + type + ";base64," + b64;
+            } catch (Throwable t) {
+                Log.e(TAG, "fetchImage failed: " + t.getMessage());
+                return "";
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }
     }
 
     @Override

@@ -34,7 +34,6 @@ global.FileReader.prototype.readAsDataURL = function () {
   var self = this;
   setTimeout(function () { self.result = "data:image/png;base64,AAA"; self.onload && self.onload(); }, 0);
 };
-
 const ELS = {};
 function el(id) { return { id, value: "", textContent: "", innerHTML: "", className: "",
   style: { display: "", cssText: "" }, _attrs: {}, _h: {},
@@ -57,6 +56,17 @@ const document = { readyState: "complete", body: el("body"), documentElement: el
 const window = { document, localStorage, addEventListener: () => {}, removeEventListener: () => {},
   navigator: {}, fetch: fakeFetch2, AbortController: global.AbortController, FileReader: global.FileReader };
 window.window = window;
+// 原生桥桩：任何 https 外链都下载成 data URI（模拟 Java 侧无 CORS 下载）
+window.NativeErrorBridge = {
+  logError: function () {},
+  fetchImageAsDataUri: function (url, cbName) {
+    setTimeout(function () {
+      if (typeof window[cbName] === "function") {
+        window[cbName]("data:image/jpeg;base64,NATIVEIMG");
+      }
+    }, 0);
+  }
+};
 
 const ctx = { window, document, localStorage, console, setTimeout, clearTimeout, Date, JSON,
   String, Number, Array, Math, isFinite, Error, Promise, confirm: () => true, fetch: fakeFetch2,
@@ -79,11 +89,11 @@ const S = window.Store, AI = window.AI;
   S.setActiveEndpoint("image", i.id);
   S.updateEndpoint("image", i.id, { base: "https://img.test/v1", key: "ik", model: "grok-imagine-image-2.0" });
 
-  console.log("— 1. 首选 url 格式，一次成功（并转 data URI 防 WebView 拦截）—");
+  console.log("— 1. 首选 url 格式，一次成功（并走原生桥转 data URI）—");
   PLAN = [{ data: [{ url: "https://cdn.test/a.png" }] }]; CALLS = [];
   let r = await AI.image("一条洛丽塔裙");
   ok("返回图片", !r.__error);
-  ok("外链已转成 data URI", /^data:image\//.test(r.uri));
+  ok("外链已转成 data URI（原生桥）", /^data:image\//.test(r.uri));
   ok("接口只调一次", CALLS.length === 1);
   ok("请求用 response_format=url", CALLS[0].body.response_format === "url");
   ok("默认尺寸 1024x1024（不再写死 1536）", CALLS[0].body.size === "1024x1024");
@@ -132,6 +142,21 @@ const S = window.Store, AI = window.AI;
   S.updateEndpoint("image", i.id, { base: "http://x.com/v1", model: "m" });
   r = await AI.image("p");
   ok("拒绝非 HTTPS", !!r.__error && r.__error.indexOf("HTTPS") >= 0);
+
+  console.log("— 9. 原生桥优先（无 CORS 限制）—");
+  S.updateEndpoint("image", i.id, { base: "https://img.test/v1", key: "ik", model: "m", size: "", timeoutMs: 0 });
+  PLAN = [{ data: [{ url: "https://cdn.test/b.png" }] }]; CALLS = [];
+  r = await AI.image("p");
+  ok("走原生桥得到 data URI", r.uri === "data:image/jpeg;base64,NATIVEIMG");
+  ok("原生桥路径不触发 JS fetch 下载", CALLS.length === 1);
+
+  console.log("— 10. 无原生桥时退回 JS fetch（浏览器）—");
+  const savedBridge = window.NativeErrorBridge;
+  delete window.NativeErrorBridge;
+  PLAN = [{ data: [{ url: "https://cdn.test/a.png" }] }]; CALLS = [];
+  r = await AI.image("p");
+  ok("浏览器下也能出图", !r.__error && /^data:/.test(r.uri));
+  window.NativeErrorBridge = savedBridge;
 
   console.log("\n——— 结果 ———");
   console.log("✅ 通过 " + pass + "  ❌ 失败 " + fail);
