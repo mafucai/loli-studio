@@ -15,6 +15,8 @@
   function OM() { return global.OrderModel; }
   // stepLabel 同理：render.js 的内部函数，必须走 R.stepLabel
   function stepLabel(id) { return R.stepLabel(id); }
+  // nextBtn 同理由 render.js 提供，必须走 R.nextBtn（裸引用在沙箱/非全局下会 ReferenceError）
+  function nextBtn(step, label) { return R.nextBtn(step, label); }
 
   /* 0 企划：主题风格 + 柄图（文档【第二层】第 0 步，必须在设计词之前） */
   function vPlan(d) {
@@ -184,6 +186,8 @@
           ? '<div class="kv"><span>保本件数</span><span>' + fin.breakEven + " 件</span></div>"
           : '<p class="warn-note">公布价低于单件成本，怎么卖都亏。</p>') +
         "</div>";
+      // 定样完成才能开团（P0-1 修复：此前 final→pre 断头）
+      body += '<div class="block">' + nextBtn("pre", "下一步 · 预售开团") + "</div>";
     }
 
     return screen("final", "定样", stepLabel("final"), body);
@@ -310,6 +314,9 @@
       body += Fx.blockBatch(d) + Fx.blockTail(d, d.orders) +
               Fx.blockShip(d.orders) + Fx.blockAfterSale(d.orders);
     }
+
+    // P0-1 修复：此前 pre→board 断头，看板走不到
+    body += '<div class="block">' + nextBtn("board", "下一步 · 统计看板") + "</div>";
 
     return screen("pre", "预售", stepLabel("pre"), body);
   }

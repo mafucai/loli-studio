@@ -114,4 +114,26 @@ for (const s of states) {
   console.log(`${ok ? '✅' : '❌'} ${s.padEnd(6)} ${ok ? '有 data-act 可推进' : '无任何 data-act 可推进到此状态'}`);
 }
 console.log('\n不可达款状态数：' + unreachable + ' / ' + states.length);
-console.log('\n总计：12 项中 ' + (12 - bad) + ' 项代码特征齐全，' + bad + ' 项缺特征。');
+
+// ===== 步骤图可达性（P0-1 修复配套；R11 补全：此前只查款状态机，漏了步骤图）=====
+// 判据：除第 0 步外，每个 step 的 id 必须被某个视图的 nextBtn("<id>",...) 指向。
+// 理由：E1~E3 做了定样/预售/看板三步视图，却没接前进按钮 → 用户点不进去（真 P0）。
+console.log('\n=== 步骤图可达性（每个 step 必须有 nextBtn 指向）===');
+const routerSrc = SRC['router.js'] || '';
+const stepIds = [...routerSrc.matchAll(/id:\s*"([^"]+)"/g)].map(m => m[1]);
+const nextTargets = new Set();
+for (const f of viewFiles) {
+  for (const m of (SRC[f] || '').matchAll(/nextBtn\(\s*"([^"]+)"/g)) nextTargets.add(m[1]);
+}
+// 第 0 步是入口（tabbar/静态），不需要被 nextBtn 指向
+const needReach = stepIds.slice(1);
+const unreachableSteps = needReach.filter(id => !nextTargets.has(id));
+for (const id of needReach) {
+  const ok = nextTargets.has(id);
+  console.log(`${ok ? '✅' : '❌'} ${id.padEnd(8)} ${ok ? '有 nextBtn 指向' : '没有任何 nextBtn 指向此步（界面走不到）'}`);
+}
+console.log('\n不可达步骤数：' + unreachableSteps.length + ' / ' + needReach.length);
+
+const totalBad = bad + unreachableSteps.length;
+console.log('\n总计：12 项中 ' + (12 - bad) + ' 项代码特征齐全，' + bad + ' 项缺特征；步骤图 ' + (needReach.length - unreachableSteps.length) + '/' + needReach.length + ' 可达。');
+if (totalBad > 0 || unreachableSteps.length > 0) process.exit(1);

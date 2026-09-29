@@ -61,6 +61,23 @@ public class MainActivity extends Activity {
                 if (cm.messageLevel() == ConsoleMessage.MessageLevel.ERROR) injectError(m);
                 return true;
             }
+
+            // P0-2 修复：WebView 默认对 onJsConfirm 返回 false、onJsPrompt 返回 null，
+            // 导致 confirm()/prompt() 在 APK 里静默失效（删除设计单/删除接口/录 UV 点了没反应）。
+            // 浏览器里正常，只有 WebView 壳 App 会踩 —— 必须显式放行。
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message,
+                                       android.webkit.JsResult result) {
+                result.confirm();
+                return true;
+            }
+
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message,
+                                      String defaultValue, android.webkit.JsPromptResult result) {
+                result.confirm(defaultValue);
+                return true;
+            }
         });
 
         setContentView(webView);

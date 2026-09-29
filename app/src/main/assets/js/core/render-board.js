@@ -86,7 +86,12 @@
   }
 
   function vBoard(d) {
+    // P0-1 修复：全仓无 d.board 赋值点（buildBoard 有导出、有断言、但零调用）→ 视图内即时计算。
+    // 纯函数：buildBoard 只读 d.pre / d.orders / d.uv，不写存储。
     var b = d && d.board;
+    if (!b && d && d.pre && BM()) {
+      b = BM().buildBoard(d.pre, d.orders || [], { uv: d.uv, days: 30 });
+    }
     var body = '<div class="block"><h2>看板说明</h2>' +
       '<p class="hint">本表列名「阈值触发→动作」。成团率、定金转化率是<b>低于</b>触发；退款率、售后占比是<b>高于</b>触发。' +
       "看板只给结论与建议，不自动退款、不自动通知。</p></div>";

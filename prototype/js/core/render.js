@@ -321,13 +321,17 @@
         '<div><label for="cost-qty">生产数量（件）</label><input id="cost-qty" inputmode="numeric" placeholder="例如 100"></div>' +
       '</div>' +
       '<button type="button" class="btn primary wide" data-act="run-finance" style="margin-top:14px">计算</button></div>';
-    if (f && !f.error) body += '<div class="block"><h2>结果</h2><div class="price">' + money(f.profit) + '<small> / 件利润</small></div><div class="hr"></div><div class="kv"><span>收入</span><span>' + money(f.income) + '</span></div><div class="kv"><span>生产成本</span><span class="bad">-' + money(f.cost * f.qty) + '</span></div><div class="kv"><span>平台佣金</span><span class="bad">-' + money(f.fee * f.qty) + '</span></div><div class="kv"><span>快递包装</span><span class="bad">-' + money((f.shipping + f.pack) * f.qty) + '</span></div><div class="kv"><span>总利润</span><span>' + money(f.totalProfit) + '</span></div><div class="kv"><span>利润率</span><span>' + f.margin.toFixed(1) + '%</span></div></div>';
+    if (f && !f.error) {
+      body += '<div class="block"><h2>结果</h2><div class="price">' + money(f.profit) + '<small> / 件利润</small></div><div class="hr"></div><div class="kv"><span>收入</span><span>' + money(f.income) + '</span></div><div class="kv"><span>生产成本</span><span class="bad">-' + money(f.cost * f.qty) + '</span></div><div class="kv"><span>平台佣金</span><span class="bad">-' + money(f.fee * f.qty) + '</span></div><div class="kv"><span>快递包装</span><span class="bad">-' + money((f.shipping + f.pack) * f.qty) + '</span></div><div class="kv"><span>总利润</span><span>' + money(f.totalProfit) + '</span></div><div class="kv"><span>利润率</span><span>' + f.margin.toFixed(1) + '%</span></div></div>';
+      // 算完成本才能进定样（P0-1 修复：此前 cost→final 断头，用户走不到定样）
+      body += '<div class="block">' + nextBtn("final", "下一步 · 定样定价") + "</div>";
+    }
     return screen("cost", "成本", stepLabel("cost"), body);
   }
 
   global.R = {
     esc: esc, money: money, tabbar: tabbar, colors: colors, screen: screen,
-    stepLabel: stepLabel,
+    stepLabel: stepLabel, nextBtn: nextBtn,
     vWord: vWord, vImg: vImg, vPart: vPart, vCheck: vCheck, vBuy: vBuy,
     vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost
   };

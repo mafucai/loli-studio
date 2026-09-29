@@ -471,6 +471,56 @@ assert(!/orders\s*:/.test((src["post-actions.js"].match(/ACT\["design-next"\][\s
     (missing.length ? "：缺 " + missing.join(",") : ""));
 })();
 
+/* ===== 组 25：P0 回归闸门（防再犯）===== */
+(function () {
+  var allSrc = Object.keys(src).filter(function (k) { return !/\.bak/.test(k); })
+    .map(function (k) { return src[k]; }).join("\n");
+
+  // 25. 步骤图可达性（防 P0-1 再犯：视图写了但没接前进按钮，用户点不进去）
+  var stepIds = [];
+  var rS = /id:\s*"([^"]+)"/g, ms;
+  while ((ms = rS.exec(src["router.js"]))) stepIds.push(ms[1]);
+  var nextT = {};
+  var rN2 = /nextBtn\(\s*"([^"]+)"/g;
+  while ((ms = rN2.exec(allSrc))) nextT[ms[1]] = true;
+  var unreach = stepIds.slice(1).filter(function (id) { return !nextT[id]; });
+  assert(unreach.length === 0, "25a. 每个步骤都有 nextBtn 指向（界面走得到）" +
+    (unreach.length ? "：走不到 " + unreach.join(",") : " → " + (stepIds.length - 1) + " 步全可达"));
+
+  // 25b. buildBoard 必须有调用点（防「导出+断言但 App 零调用」的孤立模型函数）
+  assert(/buildBoard\s*\(/.test(src["render-board.js"]),
+    "25b. 看板视图实际调用 buildBoard（非只导出）");
+
+  // 25c. 裸调 confirm()/prompt() 仅在与「原生壳已放行」配对时允许（P0-2 的正确判据）
+  //      §：浏览器里 confirm/prompt 正常，WebView 壳默认静默失效 → 靠 Java 侧放行兜底。
+  //      故判据不是"禁裸调"，而是"若裸调则原生壳必须已重写 onJsConfirm/onJsPrompt"。
+  var naked = [];
+  Object.keys(src).forEach(function (k) {
+    if (/\.bak/.test(k)) return;
+    var reC = /(^|[^.\w])confirm\s*\(/g, mc;
+    while ((mc = reC.exec(src[k]))) naked.push(k);
+  });
+  var JAVA_OK = false;
+  try {
+    JAVA_OK = /onJsConfirm/.test(fs.readFileSync(path.resolve(__dirname, "..",
+      "app/src/main/java/com/lolistudio/app/MainActivity.java"), "utf8"));
+  } catch (e) { JAVA_OK = false; }
+  assert(naked.length === 0 || JAVA_OK,
+    "25c. 裸 confirm() 依赖原生壳放行（已放行则通过）" +
+    (naked.length ? "：裸调于 [" + naked.join(",") + "]，原生壳放行=" + JAVA_OK : ""));
+
+  // 25d. 原生壳必须放行 JS 对话框（P0-2 的另一半，须在 Java 侧核对）
+  var JAVA = "";
+  try {
+    JAVA = fs.readFileSync(path.resolve(__dirname, "..",
+      "app/src/main/java/com/lolistudio/app/MainActivity.java"), "utf8");
+  } catch (e) { JAVA = ""; }
+  if (JAVA) {
+    assert(/onJsConfirm/.test(JAVA), "25d. MainActivity 重写 onJsConfirm");
+    assert(/onJsPrompt/.test(JAVA), "25e. MainActivity 重写 onJsPrompt");
+  }
+})();
+
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");
 process.exit(fail === 0 ? 0 : 1);

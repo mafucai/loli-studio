@@ -9,7 +9,7 @@
 
 ## 一、一句话现状
 
-**设计主线（九步）+ 电商预售线（开团 → 定金 → 成团判定 → 流团退款 → 补尾款 → 发货 → 售后 → 统计看板）全部打通。614 项本机断言全绿。文档 §十 12 项全部落地。**
+**设计主线（九步）+ 电商预售线（开团 → 定金 → 成团判定 → 流团退款 → 补尾款 → 发货 → 售后 → 统计看板）全部打通。651 项本机断言全绿（脚本自报，本表须随实测校准）。文档 §十 12 项全部落地。**
 
 ---
 
@@ -166,6 +166,32 @@
 | E2 | 成团判定 + 流团退款清单（按颜色×批次） | 511 |
 | E3 | 补尾款 / 尾款逾期催款 / 发货 / 售后登记 / 统计看板 | 614 |
 | **E4** | **大货生产款状态推进（补第 9 项真实缺口）+ 走通性自检** | **699** |
+| E5 | 历史页补「新建设计单」入口（修孤儿动作）+ DOM 契约检查 | 292 |
+| **E6** | **实测审查出 2 个 P0 + 1 个既有隐性 bug，全部修复 + 防再犯闸门** | **651** |
+
+### 批 E6 具体交付（主人实测审查 → 真 P0 修复）
+
+> 元教训：E4/E5 两次「断言全绿」仍漏功能不可达 —— **断言全绿 ≠ 功能可用（D10）第三次重演**。
+> 本轮改变审查维度：从「代码在不在」改为「**用户走不走得到**」。
+
+**P0-1｜步骤图断头路**（定样/预售/看板界面走不到）
+- `render.js` vCost 尾 → `nextBtn("final")`；`render-extra.js` vFinal 尾 → `nextBtn("pre")`；vPre 尾 → `nextBtn("board")`
+- `render-board.js` vBoard：`d.board` 全仓零赋值点（`buildBoard` 有导出有断言但 App 零调用）→ 视图内即时计算 fallback
+- `flow-walkthrough.js` 新增**步骤图可达性**检查（此前只查款状态机，漏了一半）
+
+**P0-2｜`confirm()`/`prompt()` 在 APK 静默失效**
+- `MainActivity.java` 的 `WebChromeClient` 只重写 `onConsoleMessage` → 补 `onJsConfirm` / `onJsPrompt`
+- 影响：删除设计单 / 删除接口 / 录 UV 三按钮在 APK 上「点了没反应」（浏览器正常）
+- `ui-regression` 新增组 25：`25c` 裸调 confirm 必须与「原生壳已放行」配对、`25d/25e` Java 侧必须重写两方法
+
+**顺带修出的既有隐性 bug（此前从未触发）**
+- `render-extra.js:58` 裸引用 `nextBtn` —— 它是 `render.js` 的 IIFE 内部函数，不在共享作用域。
+  真实浏览器靠全局污染侥幸可用，`backcompat-test` 沙箱一跑就 `ReferenceError`（6 项失败）。
+  修法：`render.js` 导出 `R.nextBtn`，`render-extra.js` 走 wrapper（符合项目「拆文件须导出或 wrapper」铁律）。
+
+**仓库卫生（P1）**
+- 清理 44 个 `.bak` / `repro-*` 残留 + `git rm --cached` 7 个被跟踪文件；`.gitignore` 补 `scripts/repro-*.js`
+- 文档项数校准：`VALIDATION.md` 372 → **651**（脚本自报）、`PROGRESS.md` 614/699 → 651
 
 ### 批 E3 具体交付
 
