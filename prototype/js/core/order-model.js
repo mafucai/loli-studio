@@ -13,11 +13,14 @@
     return (global.Factory && global.Factory.DEFAULT_TARGET) || 1000;
   }
 
-  var ORDER_STATES = ["待定金","已付定金","待尾款","已付尾款","待发货","已发货","售后","完结","退款中","已退款","定金逾期"];
+  // 订单状态（文档 §三 + §五 尾款逾期）
+  var ORDER_STATES = ["待定金","已付定金","待尾款","尾款逾期","已付尾款","待发货","已发货","售后","完结","退款中","已退款","定金逾期"];
   var ORDER_FLOW = {
     "待定金":   ["已付定金","定金逾期"],
     "已付定金": ["待尾款","退款中"],
-    "待尾款":   ["已付尾款","退款中"],
+    "待尾款":   ["已付尾款","尾款逾期","退款中"],
+    // 尾款逾期：标记逾期 → 出催款清单（§五「不自动发」）。仍可补付尾款。
+    "尾款逾期": ["已付尾款","退款中"],
     "已付尾款": ["待发货","退款中"],
     "待发货":   ["已发货","退款中"],
     "已发货":   ["售后","完结"],
@@ -202,12 +205,145 @@
     };
   }
 
+  // ===== 批 E3：订单推进 =====
+
+  // 统一流转：校验状态机 + 记事件。返回新订单数组（不改原数组）
+  function transit(list, anonId, to, why, actor) {
+    var arr = (list || []).slice();
+    var i = -1;
+    for (var k = 0; k < arr.length; k++) if (arr[k].anonId === anonId) { i = k; break; }
+    if (i < 0) return { __error: "找不到订单 " + anonId };
+    var from = arr[i].state;
+    if (from === to) return { __error: anonId + " 已经是「" + to + "」" };
+    if (!canTransit(from, to)) return { __error: "「" + from + "」不能直接到「" + to + "」" };
+    var ev = (arr[i].events || []).concat([{
+      at: new Date().toISOString(), from: from, to: to,
+      why: why || "", actor: actor || "商家"
+    }]);
+    var next = {};
+    for (var p in arr[i]) if (Object.prototype.hasOwnProperty.call(arr[i], p)) next[p] = arr[i][p];
+    next.state = to;
+    next.events = ev;
+    if (to === "已付尾款") next.paidTailAt = new Date().toISOString();
+    if (to === "已发货") next.shippedAt = new Date().toISOString();
+    arr[i] = next;
+    return { orders: arr, from: from, to: to, anonId: anonId };
+  }
+
+  // 批量流转（补尾款等场景）：返回 { orders, done:[], failed:[{anonId,reason}] }
+  function transitMany(list, ids, to, why, actor) {
+    var work = (list || []).slice(), done = [], failed = [];
+    (ids || []).forEach(function (id) {
+      var r = transit(work, id, to, why, actor);
+      if (r.__error) failed.push({ anonId: id, reason: r.__error });
+      else { work = r.orders; done.push(id); }
+    });
+    return { orders: work, done: done, failed: failed };
+  }
+
+  // 尾款逾期判定：已到截止日且仍是「待尾款」的订单
+  function tailOverdue(orders, deadline, now) {
+    if (!isDue(deadline, now)) return [];
+    return (orders || []).filter(function (o) { return o.state === "待尾款"; })
+      .map(function (o) { return o.anonId; });
+  }
+
+  // 催款清单（§五：标记逾期 → 出清单，不自动发）
+  function buildTailDunning(orders, ids) {
+    var set = ids || tailOverdue(orders, arguments[2]);
+    var rows = (orders || []).filter(function (o) { return set.indexOf(o.anonId) >= 0; });
+    return {
+      rows: rows.map(function (o) {
+        return { anonId: o.anonId, color: o.color, batchNo: o.batchNo,
+                 qty: o.qty, amount: o.amount, state: o.state };
+      }),
+      count: rows.length, at: new Date().toISOString()
+    };
+  }
+
+  // 发货清单：待发货订单（发货时才允许录真单号，文档 §一）
+  function buildShipList(orders) {
+    var rows = (orders || []).filter(function (o) { return o.state === "待发货"; });
+    return {
+      rows: rows.map(function (o) {
+        return { anonId: o.anonId, color: o.color, batchNo: o.batchNo, qty: o.qty,
+                 amount: o.amount, realNo: o.realNo || "", state: o.state };
+      }),
+      count: rows.length, at: new Date().toISOString()
+    };
+  }
+
+  // 写/读真单号：只有「发货/退款/对账」能读写（文档 §一）
+  function setRealNo(list, anonId, realNo, act) {
+    if (REALNO_ACTS.indexOf(act) < 0) return { __error: "「" + act + "」无权读写单号" };
+    var arr = (list || []).slice(), hit = false;
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].anonId !== anonId) continue;
+      if (["待发货","已发货","售后"].indexOf(arr[i].state) < 0) {
+        return { __error: arr[i].state + " 状态不能录单号" };
+      }
+      var n = {};
+      for (var p in arr[i]) if (Object.prototype.hasOwnProperty.call(arr[i], p)) n[p] = arr[i][p];
+      n.realNo = String(realNo || "");
+      arr[i] = n; hit = true; break;
+    }
+    if (!hit) return { __error: "找不到订单 " + anonId };
+    return { orders: arr, anonId: anonId, act: act };
+  }
+
+  // ===== 售后原因（§五 异常矩阵可点选记录；只记录，不自动执行）=====
+  var AFTER_SALE_REASONS = [
+    "尺码不合","色差","做工瑕疵","面料问题","物流破损","错发漏发",
+    "赠品缺货","工厂翻车(抽检不合格)","工厂延期","版权投诉",
+    "面料断货/涨价","买家取消","平台判责/抽检","合并发货"
+  ];
+
+  // 记录售后：推进到「售后」并写原因；只留痕，不改别的
+  function recordAfterSale(list, anonId, reason, note) {
+    if (AFTER_SALE_REASONS.indexOf(reason) < 0) return { __error: "未知售后原因：" + reason };
+    var arr = (list || []).slice(), i = -1;
+    for (var k = 0; k < arr.length; k++) if (arr[k].anonId === anonId) { i = k; break; }
+    if (i < 0) return { __error: "找不到订单 " + anonId };
+    var o = arr[i], from = o.state;
+    var cur = (from === "售后") ? "售后" : "售后";
+    if (from !== "售后" && !canTransit(from, "售后")) {
+      return { __error: "「" + from + "」不能登记售后" };
+    }
+    var n = {};
+    for (var p in o) if (Object.prototype.hasOwnProperty.call(o, p)) n[p] = o[p];
+    n.state = cur;
+    n.afterSale = (o.afterSale || []).concat([{
+      at: new Date().toISOString(), reason: reason, note: note || "", from: from
+    }]);
+    arr[i] = n;
+    return { orders: arr, anonId: anonId, reason: reason };
+  }
+
+  // 售后原因分布（供看板「售后某原因占比」）
+  function afterSaleStats(orders) {
+    var map = {}, total = 0;
+    (orders || []).forEach(function (o) {
+      (o.afterSale || []).forEach(function (a) {
+        map[a.reason] = (map[a.reason] || 0) + 1; total++;
+      });
+    });
+    var rows = Object.keys(map).map(function (r) {
+      return { reason: r, count: map[r], pct: total ? map[r] / total : 0 };
+    }).sort(function (a, b) { return b.count - a.count; });
+    return { rows: rows, total: total };
+  }
+
   global.OrderModel = {
     ORDER_STATES: ORDER_STATES, ORDER_FLOW: ORDER_FLOW, REALNO_ACTS: REALNO_ACTS,
     DESIGN_STATES: DESIGN_STATES, DESIGN_FLOW: DESIGN_FLOW,
+    AFTER_SALE_REASONS: AFTER_SALE_REASONS,
     canTransit: canTransit, canTransitDesign: canTransitDesign,
     nextAnonId: nextAnonId, openPre: openPre,
     parseOrderLines: parseOrderLines, makeOrders: makeOrders, tallyByBatch: tallyByBatch,
-    isDue: isDue, judgePre: judgePre, buildRefundList: buildRefundList
+    isDue: isDue, judgePre: judgePre, buildRefundList: buildRefundList,
+    transit: transit, transitMany: transitMany,
+    tailOverdue: tailOverdue, buildTailDunning: buildTailDunning,
+    buildShipList: buildShipList, setRealNo: setRealNo,
+    recordAfterSale: recordAfterSale, afterSaleStats: afterSaleStats
   };
 })(window);

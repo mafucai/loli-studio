@@ -33,6 +33,10 @@ var files = {
   "render-vote.js":   "js/core/render-vote.js",
   "order-model.js":   "js/core/order-model.js",
   "pre-actions.js":   "js/core/pre-actions.js",
+  "post-actions.js":  "js/core/post-actions.js",
+  "board-model.js":   "js/core/board-model.js",
+  "render-board.js":  "js/core/render-board.js",
+  "render-flux.js":   "js/core/render-flux.js",
   "actions.js":       "js/core/actions.js",
   "main.js":          "js/core/main.js"
 };
@@ -59,7 +63,7 @@ var codeOnly = (src["render.js"] + "\n" + src["render-extra.js"]).split("\n")
 assert(!/document\./.test(codeOnly), "1. 渲染层无 document.（含 code 行）");
 
 // 2. localStorage 只在 store.js
-["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","vote-actions.js","final-actions.js","pre-actions.js","word-actions.js","actions.js","main.js","order-model.js"].forEach(function (f) {
+["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","vote-actions.js","final-actions.js","pre-actions.js","post-actions.js","word-actions.js","actions.js","main.js","order-model.js","board-model.js","render-board.js","render-flux.js"].forEach(function (f) {
   // 排除注释
   var codeOnly = src[f].split("\n").filter(function (l) {
     var t = l.trim(); return t && !t.startsWith("*") && !t.startsWith("//");
@@ -86,7 +90,10 @@ Object.keys(src).forEach(function (f) {
 
 // 6. Router.STEPS 有 10 步
 var stepsCount = (src["router.js"].match(/\{ id: "/g) || []).length;
-assert(stepsCount === 13, "6. Router.STEPS 恰好 13 步（实际 " + stepsCount + "）");
+// 步数与脚本数随批次增长，断言只校验「与 index.html / STEPS 一致 + 不低于基线」，不写死具体值（EVOLUTION R4）
+var MIN_STEPS = 13, MIN_SCRIPTS = 15;
+assert(stepsCount >= MIN_STEPS, "6. Router.STEPS 不少于 " + MIN_STEPS + " 步（实际 " + stepsCount + "）");
+assert(/id:\s*"board"/.test(src["router.js"]), "6b. router.js 注册了 board（看板）步骤");
 
 // 7. 所有 data-act 都有对应处理函数
 var acts = {};
@@ -99,12 +106,16 @@ while ((m = regex.exec(src["vote-actions.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["final-actions.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["word-actions.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["pre-actions.js"]))) acts[m[1]] = true;
+var regPost = /ACT\["([^"]+)"\]/g;
+while ((m = regPost.exec(src["post-actions.js"]))) acts[m[1]] = true;
 // 收集 render 里出现的所有 data-act
 var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
 while ((m = r2.exec(src["render.js"]))) usedActs[m[1]] = true;
 while ((m = r2.exec(src["render-extra.js"]))) usedActs[m[1]] = true;
 while ((m = r2.exec(src["render-vote.js"]))) usedActs[m[1]] = true;
+while ((m = r2.exec(src["render-flux.js"]))) usedActs[m[1]] = true;
+while ((m = r2.exec(src["render-board.js"]))) usedActs[m[1]] = true;
 // 加上 main.js 里 run() 直接调用的
 var r3 = /Actions\.run\("([^"]+)"/g;
 while ((m = r3.exec(src["main.js"]))) usedActs[m[1]] = true;
@@ -132,13 +143,13 @@ assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store �
 // 10. 加载顺序依赖：index.html 加载顺序为 router→ai→factory→store→render→actions→main
 var htmlScripts = (src["index.html"].match(/src="([^"]+)"/g) || [])
   .map(function (s) { return s.match(/src="([^"]+)"/)[1]; });
-var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/order-model.js","js/core/store.js","js/core/render.js","js/core/render-vote.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/final-actions.js","js/core/pre-actions.js","js/core/word-actions.js","js/core/actions.js","js/core/main.js"];
+var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/board-model.js","js/core/store.js","js/core/render.js","js/core/render-vote.js","js/core/render-extra.js","js/core/render-board.js","js/core/render-flux.js","js/core/settings.js","js/core/vote-actions.js","js/core/final-actions.js","js/core/pre-actions.js","js/core/post-actions.js","js/core/word-actions.js","js/core/actions.js","js/core/main.js"];
 // 顺序：router, ai, factory 是纯模块无依赖；store 也不依赖；render 依赖 Router/AI；actions 依赖 Store/Router/AI；main 依赖全部
 var orderIdx = {};
 expected.forEach(function (e, i) { orderIdx[e] = i; });
 var actualIdx = {};
 htmlScripts.forEach(function (s, i) { actualIdx[s] = i; });
-assert(htmlScripts.length === 15, "10a. index.html 加载 15 个脚本（实际 " + htmlScripts.length + "）");
+assert(htmlScripts.length >= MIN_SCRIPTS, "10a. index.html 加载脚本不少于 " + MIN_SCRIPTS + " 个（实际 " + htmlScripts.length + "）");
 // render.js 必须在 router.js 后
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/router.js"], "10b. render 在 router 后");
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/ai.js"],     "10c. render 在 ai 后");
@@ -330,6 +341,60 @@ assert(/分色成团/.test(src["render-extra.js"]) && /退还该色定金/.test(
   "21i. 预售页写明分色成团与退定金");
 // App 不自动退款：清单只是清单
 assert(/App 不收款也不自动退款/.test(src["render-extra.js"]), "21j. 明确 App 不自动退款");
+
+// 22. 批 E3：尾款/发货/售后/看板
+["pay-tail","tail-overdue","ship","set-realno","after-sale","set-uv"].forEach(function (a) {
+  assert(acts[a] === true, "22a. 履约动作存在: " + a);
+});
+assert(/"尾款逾期"/.test(src["order-model.js"]), "22b. 状态机含「尾款逾期」（§五）");
+assert(/"尾款逾期":\s*\[/.test(src["order-model.js"]), "22c. 尾款逾期有流转规则");
+assert(/function transit\s*\(/.test(src["order-model.js"]), "22d. 统一流转函数存在");
+assert(/function transitMany\s*\(/.test(src["order-model.js"]), "22e. 批量流转存在");
+assert(/function buildTailDunning\s*\(/.test(src["order-model.js"]), "22f. 催款清单存在");
+assert(/function buildShipList\s*\(/.test(src["order-model.js"]), "22g. 发货清单存在");
+// §一：真单号只有发货/退款/对账能写
+assert(/REALNO_ACTS\s*=\s*\[\s*"发货"\s*,\s*"退款"\s*,\s*"对账"\s*\]/.test(src["order-model.js"]),
+  "22h. REALNO_ACTS 仍是 发货/退款/对账 三项");
+assert(/function setRealNo\s*\(/.test(src["order-model.js"]), "22i. setRealNo 存在");
+// 编单号必须校验动作权限
+assert(/REALNO_ACTS\.indexOf\(act\)\s*<\s*0/.test(src["order-model.js"]), "22j. setRealNo 校验动作权限");
+// 售后原因可点选（§五），且不做自动动作
+assert(/AFTER_SALE_REASONS\s*=\s*\[/.test(src["order-model.js"]), "22k. 售后原因枚举存在");
+assert(/function recordAfterSale\s*\(/.test(src["order-model.js"]), "22l. 售后登记存在");
+assert(/不做动作|只记录/.test(src["render-flux.js"]), "22m. 售后只记录不动作");
+// 催款不自动发（§五）
+assert(/不自动发/.test(src["render-flux.js"]) || /不自动发送/.test(src["post-actions.js"]),
+  "22n. 催款清单不自动发送");
+
+// —— 看板（§六 已拍板阈值版）——
+assert(/THRESHOLDS\s*=\s*\{/.test(src["board-model.js"]), "22o. 阈值集中定义");
+assert(/groupRate:/.test(src["board-model.js"]) && /depositCVR:/.test(src["board-model.js"]) &&
+  /refundRate:/.test(src["board-model.js"]), "22p. 三指标阈值齐全");
+// 成团率按 颜色×批次 逐行
+assert(/groupRateRows/.test(src["board-model.js"]) && /tallyByBatch/.test(src["board-model.js"]),
+  "22q. 成团率按颜色×批次取数");
+// UV 未录 → 待录，不触发
+assert(/待录/.test(src["board-model.js"]), "22r. UV 未录显示待录");
+assert(/level:\s*"none"/.test(src["board-model.js"]), "22s. UV 未录不触发（level=none）");
+// 阈值数值与主人拍板一致
+assert(/warn:\s*0\.008/.test(src["board-model.js"]) && /bad:\s*0\.003/.test(src["board-model.js"]),
+  "22t. 定金转化率阈值 0.8% / 0.3%");
+assert(/warn:\s*0\.15/.test(src["board-model.js"]) && /bad:\s*0\.25/.test(src["board-model.js"]),
+  "22u. 退款率阈值 15% / 25%");
+// 列名用「阈值触发→动作」，且区分低于/高于方向
+assert(/阈值触发/.test(src["render-board.js"]), "22v. 看板列名「阈值触发」");
+assert(/lowHigh === "low"/.test(src["board-model.js"]) && /lowHigh === "high"/.test(src["board-model.js"]),
+  "22w. 区分低于触发（low）与高于触发（high）");
+// 看板只给建议不执行
+assert(/不自动退款、不自动通知/.test(src["render-board.js"]), "22x. 看板不自动执行动作");
+// 步骤与注册
+assert(/id:\s*"board"/.test(src["router.js"]), "22y. board 步骤已注册");
+assert(/registerPage\("board"/.test(src["main.js"]), "22z. board 视图已注册");
+// 行数铁律
+assert((src["board-model.js"].split("\n").length) <= 400, "22aa. board-model.js ≤400 行");
+assert((src["render-board.js"].split("\n").length) <= 400, "22ab. render-board.js ≤400 行");
+assert((src["render-flux.js"].split("\n").length) <= 400, "22ac. render-flux.js ≤400 行");
+assert((src["post-actions.js"].split("\n").length) <= 400, "22ad. post-actions.js ≤400 行");
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");

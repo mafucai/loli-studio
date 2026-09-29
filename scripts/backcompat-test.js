@@ -3,7 +3,7 @@ const fs=require("fs"),vm=require("vm"),path=require("path");
 const ROOT = path.join(__dirname, "..", "prototype");
 const read=f=>fs.readFileSync(path.join(ROOT,"js/core",f),"utf8");
 const ctx=vm.createContext({window:{},console,Date,Math,JSON,encodeURIComponent,parseInt,isNaN,String,Number,Array,Object});
-["router.js","ai.js","factory.js","order-model.js","store.js","render.js","render-extra.js"].forEach(f=>vm.runInContext(read(f),ctx,{filename:f}));
+["router.js","ai.js","factory.js","order-model.js","board-model.js","store.js","render.js","render-extra.js","render-flux.js","render-board.js"].forEach(f=>vm.runInContext(read(f),ctx,{filename:f}));
 const {R,Router,Factory,OrderModel}=ctx.window;
 ctx.OrderModel=OrderModel; ctx.window.OrderModel=OrderModel;
 const g=ctx; // render 内部按裸全局找 Router/Factory/AI，桩里要把它们暴露成裸全局
@@ -56,8 +56,9 @@ ok("img 的下一步是 vote", Router.nextId("img")==="vote");
 ok("vote 的下一步是 part", Router.nextId("vote")==="part");
 ok("cost 的下一步是 final", Router.nextId("cost")==="final");
 ok("final 的下一步是 pre", Router.nextId("final")==="pre");
-ok("pre 无下一步", Router.nextId("pre")==="");
-ok("STEPS 13 步", Router.STEPS.length===13);
+ok("pre 有下一步 board", Router.nextId("pre")==="board");
+ok("board 无下一步", Router.nextId("board")==="");
+ok("STEPS 不少于 13 步", Router.STEPS.length>=13 && Router.STEPS.length===Router.STEPS.filter(function(s){return !!s.id;}).length);
 
 
 console.log("— F. 脏 prompt 检测（color 数组化后最容易出的错）—");
@@ -212,6 +213,114 @@ catch(e){ ok("vPre 无判定期不崩 ["+e.message+"]", false); }
 try { const h2=R.vPre({id:"x",step:"pre",final:FIN,pre:PRE,orders:MADE.orders,judge:JD2,refundList:RFL});
   ok("vPre 有判定+清单可渲染", h2.indexOf("判定结果")>=0 && h2.indexOf("流团退款清单")>=0 && h2.indexOf("D-0002")>=0); }
 catch(e){ ok("vPre 有判定+清单可渲染 ["+e.message+"]", false); }
+
+console.log("\n— K. 批 E3：尾款 / 发货 / 售后 / 看板 —");
+const BM=ctx.window.BoardModel;
+if(ctx.window.RenderBoard&&!R.vBoard) R.vBoard=ctx.window.RenderBoard.vBoard;
+ok("BoardModel 已加载", !!BM);
+// 状态机：尾款逾期
+ok("待尾款→尾款逾期 合法", OrderModel.canTransit("待尾款","尾款逾期"));
+ok("尾款逾期→已付尾款 合法（可补付）", OrderModel.canTransit("尾款逾期","已付尾款"));
+ok("尾款逾期→待发货 非法（必须先补尾款）", !OrderModel.canTransit("尾款逾期","待发货"));
+ok("已付尾款→待发货 合法", OrderModel.canTransit("已付尾款","待发货"));
+ok("待发货→已发货 合法", OrderModel.canTransit("待发货","已发货"));
+ok("已发货→售后 合法", OrderModel.canTransit("已发货","售后"));
+
+// transit 实测
+const L3=[{anonId:"D-0001",color:"白紫",batchNo:1,qty:10,amount:900,state:"待尾款"},
+          {anonId:"D-0002",color:"绿",batchNo:1,qty:5,amount:450,state:"待尾款"}];
+const tr=OrderModel.transit(L3,"D-0001","尾款逾期","超期","系统");
+ok("transit 成功", !tr.__error && tr.from==="待尾款" && tr.to==="尾款逾期");
+ok("transit 留痕 events", tr.orders[0].events && tr.orders[0].events.length===1 && tr.orders[0].events[0].why==="超期");
+ok("transit 不改原数组", L3[0].state==="待尾款");
+const bad=OrderModel.transit(L3,"D-0001","已发货","跳步","商家");
+ok("非法流转被拒", !!bad.__error && bad.__error.indexOf("不能直接到")>=0);
+ok("找不到订单被拒", !!OrderModel.transit(L3,"D-9999","尾款逾期","x","商家").__error);
+ok("同状态被拒", !!OrderModel.transit(L3,"D-0001","待尾款","x","商家").__error);
+
+// transitMany
+const tm=OrderModel.transitMany(L3,["D-0001","D-0002"],"已付尾款","补尾款","商家");
+ok("transitMany 全成功", tm.done.length===2 && tm.failed.length===0);
+ok("transitMany 带 paidTailAt", !!tm.orders[0].paidTailAt);
+
+// 催款清单（§五：只出清单，不自动发）
+const dun=OrderModel.buildTailDunning(L3,["D-0001"]);
+ok("催款清单只含指定单", dun.count===1 && dun.rows[0].anonId==="D-0001");
+ok("催款清单不含身份字段", dun.rows.every(r=>!("name" in r)&&!("phone" in r)&&!("address" in r)));
+
+// 真单号权限（§一）
+const L4=[{anonId:"D-0001",color:"绿",batchNo:1,qty:5,amount:450,state:"待发货",realNo:""}];
+ok("发货可写单号", !OrderModel.setRealNo(L4,"D-0001","SF123","发货").__error);
+ok("对账可写单号", !OrderModel.setRealNo(L4,"D-0001","SF123","对账").__error);
+ok("退款可写单号", !OrderModel.setRealNo(L4,"D-0001","SF123","退款").__error);
+ok("其他动作写单号被拒（§一）", !!OrderModel.setRealNo(L4,"D-0001","SF123","看板").__error);
+ok("待定金状态不能录单号", !!OrderModel.setRealNo([{anonId:"D-1",state:"待定金"}],"D-1","x","发货").__error);
+
+// 售后登记
+const L5=[{anonId:"D-0001",color:"绿",batchNo:1,qty:5,amount:450,state:"已发货"}];
+const as=OrderModel.recordAfterSale(L5,"D-0001","尺码不合","偏小");
+ok("售后登记成功", !as.__error && as.orders[0].state==="售后");
+ok("售后留痕原因", as.orders[0].afterSale[0].reason==="尺码不合");
+ok("未知售后原因被拒", !!OrderModel.recordAfterSale(L5,"D-0001","瞎写","x").__error);
+ok("售后原因枚举 ≥10 项", OrderModel.AFTER_SALE_REASONS.length>=10);
+const st=OrderModel.afterSaleStats(as.orders);
+ok("售后分布统计", st.total===1 && st.rows[0].reason==="尺码不合" && st.rows[0].pct===1);
+
+// 看板：成团率按 颜色×批次
+const PRE3={batches:[{color:"白紫",no:1,target:1000},{color:"绿",no:1,target:1000}]};
+const ORD3=[{anonId:"D-1",color:"白紫",batchNo:1,qty:1000,amount:90000,state:"已付定金"},
+            {anonId:"D-2",color:"绿",batchNo:1,qty:300,amount:27000,state:"已付定金"}];
+const gr=BM.groupRateRows(PRE3,ORD3);
+ok("成团率逐行 2 行", gr.length===2);
+ok("够线行 enough=true", gr.filter(r=>r.color==="白紫")[0].enough===true);
+ok("不够线行 enough=false", gr.filter(r=>r.color==="绿")[0].enough===false);
+ok("不够线触发「低于」", gr.filter(r=>r.color==="绿")[0].trigger==="低于");
+ok("不够线动作含流团", gr.filter(r=>r.color==="绿")[0].action.indexOf("流团")>=0);
+
+// UV 未录 → 待录，不触发
+const c0=BM.depositCVR(100,null);
+ok("UV 未录 display=待录", c0.display==="待录");
+ok("UV 未录 level=none", c0.level==="none");
+ok("UV 未录 cvr=null", c0.cvr===null);
+ok("UV 未录 trigger 不触发", c0.trigger==="—");
+const c1=BM.depositCVR(100,10000);   // 1%
+ok("UV 1% → ok", c1.level==="ok");
+const c2=BM.depositCVR(50,10000);    // 0.5%
+ok("UV 0.5% → warn", c2.level==="warn");
+const c3=BM.depositCVR(20,10000);    // 0.2%
+ok("UV 0.2% → bad", c3.level==="bad");
+ok("bad 触发「低于」", c3.trigger==="低于");
+ok("bad 动作含暂停推广", c3.action.indexOf("暂停推广")>=0);
+
+// 退款率（高于触发）
+const now=new Date().toISOString();
+const ORD4=[];
+for(let i=0;i<100;i++) ORD4.push({anonId:"P-"+i,state:i<10?"已退款":"已付定金",paidAt:now});
+const rr=BM.refundRate(ORD4,now,30);
+ok("退款率 10/100=10%", Math.abs(rr.rate-0.1)<1e-9);
+ok("10% → ok（<15%）", rr.level==="ok");
+ok("退款率触发方向=高于", BM.refundRate(ORD4.map((o,i)=>({anonId:o.anonId,state:i<20?"已退款":"已付定金",paidAt:now})),now,30).trigger==="高于");
+ok("20% → warn", BM.refundRate(ORD4.map((o,i)=>({anonId:o.anonId,state:i<20?"已退款":"已付定金",paidAt:now})),now,30).level==="warn");
+ok("30% → bad", BM.refundRate(ORD4.map((o,i)=>({anonId:o.anonId,state:i<30?"已退款":"已付定金",paidAt:now})),now,30).level==="bad");
+ok("无样本不瞎判", BM.refundRate([],now,30).level==="none");
+
+// 看板汇总
+const bd=BM.buildBoard(PRE3,ORD3,{uv:10000});
+ok("buildBoard 含四块", !!bd.group && !!bd.cvr && !!bd.refund && !!bd.afterSale);
+ok("buildBoard 不改动订单", ORD3[0].state==="已付定金");
+
+// vBoard 渲染
+try { const h=R.vBoard({id:"x",step:"board",pre:PRE3,orders:ORD3,uv:10000});
+  ok("vBoard 渲染不崩", h.indexOf("成团率")>=0 && h.indexOf("定金转化率")>=0 && h.indexOf("退款率")>=0); }
+catch(e){ ok("vBoard 渲染不崩 ["+e.message+"]", false); }
+try { const h2=R.vBoard({id:"x",step:"board"});
+  ok("vBoard 无数据不崩（显示待录）", h2.indexOf("待录")>=0 || h2.indexOf("还没有可统计")>=0); }
+catch(e){ ok("vBoard 无数据不崩 ["+e.message+"]", false); }
+
+// 履约区块渲染
+try { const h3=R.vPre({id:"x",step:"pre",final:FIN,pre:PRE3,orders:ORD3});
+  ok("vPre 含尾款/发货/售后区块", h3.indexOf("补尾款")>=0 && h3.indexOf("发货")>=0 && h3.indexOf("售后登记")>=0); }
+catch(e){ ok("vPre 含履约区块 ["+e.message+"]", false); }
 
 console.log("\n结果：✅ "+pass+"  ❌ "+fail);
 process.exit(fail?1:0);

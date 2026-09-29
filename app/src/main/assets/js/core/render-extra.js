@@ -345,6 +345,12 @@
         "</div>";
     }
 
+    // —— 履约：补尾款 / 发货 / 售后（批 E3，拆到 render-flux.js）——
+    if (global.RenderFlux && d.pre) {
+      var Fx = global.RenderFlux;
+      body += Fx.blockTail(d, d.orders) + Fx.blockShip(d.orders) + Fx.blockAfterSale(d.orders);
+    }
+
     return screen("pre", "预售", stepLabel("pre"), body);
   }
 

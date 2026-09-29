@@ -19,6 +19,9 @@
   Router.registerPage("cost",    R.vCost);
   Router.registerPage("final",   R.vFinal);
   Router.registerPage("pre",     R.vPre);
+  if (global.RenderBoard && global.RenderBoard.vBoard) {
+    Router.registerPage("board", global.RenderBoard.vBoard);
+  }
   Router.registerPage("history", R.vHistory);
 
   // 全局状态

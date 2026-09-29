@@ -329,6 +329,13 @@
     });
   }
 
+  // 尾款/发货/售后/看板动作（拆到 post-actions.js）
+  if (global.Actions && global.Actions.registerPost) {
+    global.Actions.registerPost(ACT, {
+      patch: patch, cur: cur, report: report, toast: toast
+    });
+  }
+
   global.Actions = global.Actions || {};
   global.Actions.bind = bind;
   global.Actions.toast = toast;

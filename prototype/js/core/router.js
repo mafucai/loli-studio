@@ -16,7 +16,8 @@
     { id: "fact",  n: 9, title: "工厂" },
     { id: "cost",  n: 10, title: "成本" },
     { id: "final", n: 11, title: "定样" },
-    { id: "pre",   n: 12, title: "预售" }
+    { id: "pre",   n: 12, title: "预售" },
+    { id: "board", n: 13, title: "看板" }
   ];
   var views = {};
 
