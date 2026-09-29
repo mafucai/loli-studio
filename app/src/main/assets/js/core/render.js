@@ -5,9 +5,11 @@
   "use strict";
 
   var PAGES = [
-    { id: "design", title: "设计", head: "plan",  steps: ["plan", "word", "img", "part"] },
+    { id: "design", title: "设计", head: "plan",  steps: ["plan", "word", "img", "vote", "part"] },
     { id: "make",   title: "制作", head: "check", steps: ["check", "buy", "look"] },
-    { id: "run",    title: "经营", head: "model", steps: ["model", "fact", "cost"] }
+    { id: "run",    title: "经营", head: "model", steps: ["model", "fact", "cost"] },
+    // 售卖共 3 步（final/pre/board），不塞进「经营」：开卖后的链路与「成本测算」性质不同
+    { id: "sell",   title: "售卖", head: "final", steps: ["final", "pre", "board"] }
   ];
 
   function esc(s) {
@@ -37,7 +39,7 @@
     return PAGES[0];
   }
 
-  /* 底部三个主入口 */
+  /* 底部主入口：列数由容器 CSS 变量 --tab-cols 控制（见 main.js 按 PAGES.length 设置） */
   function tabbar(curId) {
     var page = pageOf(curId);
     return PAGES.map(function (item) {
@@ -45,6 +47,8 @@
         '" data-act="goto" data-step="' + item.head + '"><i></i><span>' + item.title + "</span></button>";
     }).join("");
   }
+  // 供 main.js 设置底部栏列数（不写死 3，防新增页签错位）
+  function pageCount() { return PAGES.length; }
 
   /* 页内三点进度 */
   function dots(curId) {
@@ -331,6 +335,7 @@
 
   global.R = {
     esc: esc, money: money, tabbar: tabbar, colors: colors, screen: screen,
+    pageCount: pageCount,
     stepLabel: stepLabel, nextBtn: nextBtn,
     vWord: vWord, vImg: vImg, vPart: vPart, vCheck: vCheck, vBuy: vBuy,
     vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost

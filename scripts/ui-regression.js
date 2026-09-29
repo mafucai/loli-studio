@@ -556,6 +556,39 @@ assert(!/orders\s*:/.test((src["post-actions.js"].match(/ACT\["design-next"\][\s
   assert(/function blockDesignState\s*\(/.test(src["render-extra.js"]), "26f. vPre 已拆出 blockDesignState");
 })();
 
+/* ===== 组 27：步骤与页签一致性（防「代码有 14 步，界面只见 9 个」）===== */
+(function () {
+  // 27a. Router.STEPS 里每个 step 必须属于某个 PAGES[].steps
+  var steps = [];
+  var rS = /id:\s*"([^"]+)",\s*n:\s*\d+,\s*title:/g, ms;
+  while ((ms = rS.exec(src["router.js"]))) steps.push(ms[1]);
+
+  var pagesBlock = (src["render.js"].match(/var PAGES\s*=\s*\[([\s\S]*?)\];/) || [])[1] || "";
+  var pageSteps = [];
+  var rP = /steps:\s*\[([^\]]*)\]/g, mp;
+  while ((mp = rP.exec(pagesBlock))) {
+    mp[1].split(",").forEach(function (s) {
+      var v = s.trim().replace(/^["']|["']$/g, "");
+      if (v) pageSteps.push(v);
+    });
+  }
+  var orphan = steps.filter(function (s) { return pageSteps.indexOf(s) < 0; });
+  assert(steps.length > 0 && orphan.length === 0,
+    "27a. 每个步骤都归属某页签（界面看得见）" +
+    (orphan.length ? "：孤儿步 " + orphan.join(",") : " → " + steps.length + " 步全归属"));
+
+  // 27b. PAGES 每个 steps 里的 id 必须在 Router.STEPS 里存在（防写了不存在的步）
+  var ghost = pageSteps.filter(function (s) { return steps.indexOf(s) < 0; });
+  assert(ghost.length === 0, "27b. 页签里无幽灵步骤" +
+    (ghost.length ? "：" + ghost.join(",") : ""));
+
+  // 27c. 底部栏列数不写死（CSS 用变量，JS 动态设置）
+  assert(/repeat\(var\(--tab-cols/.test(src["styles.css"]) || /--tab-cols/.test(src["styles.css"]),
+    "27c. 底部栏列数不写死（用 --tab-cols 变量）");
+  assert(/pageCount/.test(src["render.js"]) && /pageCount/.test(src["main.js"]),
+    "27d. 底部栏列数由 pageCount() 动态提供");
+})();
+
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");
 process.exit(fail === 0 ? 0 : 1);

@@ -75,6 +75,12 @@
     }
 
     stepsEl.innerHTML = R.tabbar(global.ST_VIEW === "history" ? "word" : global.ST.step);
+    // 底部栏列数跟随页签数量（不写死 3）：新增页签时自动均分，不再错位。
+    // 用 setAttribute 而非 style.setProperty：前者在 WebView 与测试桩下都可用。
+    if (R.pageCount) {
+      var cols = R.pageCount();
+      stepsEl.setAttribute("style", "--tab-cols:" + cols);
+    }
   }
   global.__render = render;
 
