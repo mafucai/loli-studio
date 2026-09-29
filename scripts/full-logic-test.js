@@ -73,9 +73,17 @@ Object.defineProperty(ctx, "ST", { get: () => window.ST, set: v => { window.ST =
 Object.defineProperty(ctx, "ST_VIEW", { get: () => window.ST_VIEW, set: v => { window.ST_VIEW = v; }, configurable: true });
 Object.defineProperty(ctx, "__render", { get: () => window.__render, set: v => { window.__render = v; }, configurable: true });
 vm.createContext(ctx);
-["router.js","ai.js","store.js","factory.js","render.js","render-extra.js","settings.js","actions.js","main.js"].forEach(f => {
-  const code = fs.readFileSync(path.join(__dirname, "..", "prototype", "js", "core", f), "utf8");
-  vm.runInContext(code, ctx, { filename: f });
+/* 加载顺序以 prototype/index.html 为唯一事实源。
+   原为手写清单，加 render-history.js 时漏掉 → R.vHistory is not function。
+   这类「随批次增长的手写列表」是同类缺陷温床（EVOLUTION R10）。 */
+const INDEX = path.join(__dirname, "..", "prototype", "index.html");
+const scriptOrder = (fs.readFileSync(INDEX, "utf8").match(/<script src="([^"]+)"/g) || [])
+  .map(s => s.match(/src="([^"]+)"/)[1].replace(/^js\/core\//, ""))
+  .filter(p => p.endsWith(".js"));
+scriptOrder.forEach(f => {
+  const fp = path.join(__dirname, "..", "prototype", "js", "core", f);
+  if (!fs.existsSync(fp)) return;
+  vm.runInContext(fs.readFileSync(fp, "utf8"), ctx, { filename: f });
 });
 
 const S = window.Store, A = window.Actions, AI = window.AI, R = window.R;

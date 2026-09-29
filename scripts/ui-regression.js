@@ -37,6 +37,7 @@ var files = {
   "board-model.js":   "js/core/board-model.js",
   "render-board.js":  "js/core/render-board.js",
   "render-flux.js":   "js/core/render-flux.js",
+  "render-history.js":"js/core/render-history.js",
   "actions.js":       "js/core/actions.js",
   "main.js":          "js/core/main.js"
 };
@@ -108,6 +109,7 @@ while ((m = regex.exec(src["word-actions.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["pre-actions.js"]))) acts[m[1]] = true;
 var regPost = /ACT\["([^"]+)"\]/g;
 while ((m = regPost.exec(src["post-actions.js"]))) acts[m[1]] = true;
+while ((m = regPost.exec(src["render-history.js"]))) acts[m[1]] = true;
 // 收集 render 里出现的所有 data-act
 var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
@@ -116,6 +118,7 @@ while ((m = r2.exec(src["render-extra.js"]))) usedActs[m[1]] = true;
 while ((m = r2.exec(src["render-vote.js"]))) usedActs[m[1]] = true;
 while ((m = r2.exec(src["render-flux.js"]))) usedActs[m[1]] = true;
 while ((m = r2.exec(src["render-board.js"]))) usedActs[m[1]] = true;
+while ((m = r2.exec(src["render-history.js"]))) usedActs[m[1]] = true;
 // 加上 main.js 里 run() 直接调用的
 var r3 = /Actions\.run\("([^"]+)"/g;
 while ((m = r3.exec(src["main.js"]))) usedActs[m[1]] = true;
@@ -420,6 +423,53 @@ assert(/canTransitDesign\s*\(/.test(src["post-actions.js"]), "23f. 大货推进�
 // 款状态推进不得碰订单状态（两个状态机独立，文档 §二/§三）
 assert(!/orders\s*:/.test((src["post-actions.js"].match(/ACT\["design-next"\][\s\S]*?\n  \};/) || [""])[0]),
   "23g. 推款状态不改订单（两状态机独立）");
+
+// 24. 批 E5：界面入口完整性（防「写了没人用」的孤儿动作）
+// 背景：ACT["new"]（新建设计单）实现了却零按钮绑定 →
+//       历史页无新建入口，多款并行场景下用户开不了新款。
+//       断言此前只查「动作存在」，不查「有没有入口」。
+(function () {
+  var INDEX_SRC = src["index.html"] || "";
+  var allSrc = Object.keys(src).map(function (k) { return src[k]; }).join("\n");
+
+  // 动作定义
+  var defined = {}, m;
+  var reD = /ACT\["([^"]+)"\]/g;
+  while ((m = reD.exec(allSrc))) defined[m[1]] = true;
+
+  // 入口：视图里的 data-act + index.html 静态按钮 + Actions.run("x")
+  var entries = {};
+  var reE = /data-act="([^"]+)"/g;
+  while ((m = reE.exec(allSrc))) entries[m[1]] = true;
+  while ((m = reE.exec(INDEX_SRC))) entries[m[1]] = true;
+  var reR = /Actions\.run\("([^"]+)"/g;
+  while ((m = reR.exec(allSrc))) entries[m[1]] = true;
+
+  var orphans = Object.keys(defined).filter(function (a) { return !entries[a]; });
+  assert(orphans.length === 0, "24a. 无孤儿动作（定义即有界面入口）" +
+    (orphans.length ? "：缺 " + orphans.join(",") : " → " + Object.keys(defined).length + " 个动作全有入口"));
+
+  // 「新建设计单」必须有入口（多款并行，文档 §六补充）
+  assert(/data-act="new"/.test(src["render-history.js"]),
+    "24b. 历史页有「新建设计单」入口");
+  assert(/data-act="new"/.test(src["render-history.js"]) || /data-act="new"/.test(INDEX_SRC),
+    "24c. new 动作可被用户触发");
+
+  // 动作读取的 data-* 属性，界面必须渲染过（否则点了拿到空值）
+  var need = {}, mn;
+  var reN = /ACT\["([^"]+)"\][\s\S]{0,600}?getAttribute\("(data-[a-z-]+)"\)/g;
+  while ((mn = reN.exec(allSrc))) (need[mn[1]] = need[mn[1]] || {})[mn[2]] = true;
+  var missing = [];
+  Object.keys(need).forEach(function (a) {
+    Object.keys(need[a]).forEach(function (attr) {
+      if (allSrc.indexOf(attr) < 0) return;   // 属性名总体出现过即可（渲染点判定见 dom-contract.js）
+      var rendered = new RegExp("[\\s\"']" + attr + "(?=[\\s>=])").test(allSrc);
+      if (!rendered) missing.push(a + "→" + attr);
+    });
+  });
+  assert(missing.length === 0, "24d. 动作所需的 data-* 属性界面都有渲染" +
+    (missing.length ? "：缺 " + missing.join(",") : ""));
+})();
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");
