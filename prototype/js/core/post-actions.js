@@ -94,6 +94,35 @@
       toast("UV 已录入：" + n);
     };
 
+    // ---- 大货：推进款状态（文档 §十 第 9 项 / §九 第 13~16 步）----
+    // 只推款状态，走状态机校验；订单状态由 ship / after-sale 各自负责（两者独立）。
+    ACT["design-next"] = function () {
+      var d = cur();
+      if (!d) { toast("没有当前设计单"); return; }
+      var curState = d.designState || "预售中";
+      var NEXT = { "已成团": "生产中", "生产中": "已发货", "已发货": "售后中", "售后中": "完结" };
+      var to = NEXT[curState];
+      if (!to) { toast("款状态「" + curState + "」已是终态"); return; }
+      if (!OrderModel.canTransitDesign(curState, to)) {
+        report("款状态不允许 " + curState + " → " + to);
+        return;
+      }
+      patch("款状态：" + curState + " → " + to, { designState: to });
+      toast("款状态已改为「" + to + "」");
+    };
+
+    ACT["design-reopen"] = function () {
+      var d = cur();
+      if (!d) { toast("没有当前设计单"); return; }
+      var curState = d.designState || "预售中";
+      if (!OrderModel.canTransitDesign(curState, "改款重开")) {
+        report("款状态「" + curState + "」不能改款重开");
+        return;
+      }
+      patch("款状态：" + curState + " → 改款重开", { designState: "改款重开" });
+      toast("已改款重开，回到图透/定样");
+    };
+
     return ACT;
   }
 

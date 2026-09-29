@@ -322,5 +322,42 @@ try { const h3=R.vPre({id:"x",step:"pre",final:FIN,pre:PRE3,orders:ORD3});
   ok("vPre 含尾款/发货/售后区块", h3.indexOf("补尾款")>=0 && h3.indexOf("发货")>=0 && h3.indexOf("售后登记")>=0); }
 catch(e){ ok("vPre 含履约区块 ["+e.message+"]", false); }
 
+// ===== L 组：批 E4 大货款状态全链路（实测）=====
+const OM_L = OrderModel;
+ok("已成团→生产中 合法（大货）", OM_L.canTransitDesign("已成团", "生产中"));
+ok("生产中→已发货 合法", OM_L.canTransitDesign("生产中", "已发货"));
+ok("已发货→售后中 合法", OM_L.canTransitDesign("已发货", "售后中"));
+ok("售后中→完结 合法", OM_L.canTransitDesign("售后中", "完结"));
+ok("已成团→已发货 非法（不可跳步）", !OM_L.canTransitDesign("已成团", "已发货"));
+ok("已流团→改款重开 合法（闭环）", OM_L.canTransitDesign("已流团", "改款重开"));
+ok("已发货→改款重开 非法（未售后不能重开）", !OM_L.canTransitDesign("已发货", "改款重开"));
+
+// 款状态机与订单状态机是两套（文档 §二/§三），同名不同义
+ok("DESIGN 有「售后中」", OM_L.DESIGN_STATES.indexOf("售后中") >= 0);
+ok("ORDER 有「售后」（无「中」）", OM_L.ORDER_STATES.indexOf("售后") >= 0 && OM_L.ORDER_STATES.indexOf("售后中") < 0);
+ok("两套状态机互不干扰（同名不混用）", (function () {
+  // 真正要防的：把订单状态的「售后」写进款状态机，或反之（文档 §二/§三 要求分开）
+  // 合法重名只有这 2 个（语义在两层里一致，不构成混淆）：
+  //   已发货 —— 订单发出 = 款进入发货期
+  //   完结   —— 两层各自的终态
+  var LEGAL_OVERLAP = ["已发货", "完结"];
+  var overlap = OM_L.DESIGN_STATES.filter(function (s) { return OM_L.ORDER_STATES.indexOf(s) >= 0; });
+  var same = overlap.length === LEGAL_OVERLAP.length &&
+             overlap.every(function (s) { return LEGAL_OVERLAP.indexOf(s) >= 0; });
+  return same;
+})());
+ok("「售后中」只在款状态机（订单侧叫「售后」，不混用）",
+  OM_L.DESIGN_STATES.indexOf("售后中") >= 0 && OM_L.ORDER_STATES.indexOf("售后中") < 0);
+
+// 大货区块渲染
+try {
+  const h = R.vPre({ id: "x", step: "pre", final: FIN, pre: PRE3, orders: ORD3, designState: "已成团" });
+  ok("预售页含大货区块", h.indexOf("大货生产") >= 0 && h.indexOf("design-next") >= 0);
+} catch (e) { ok("预售页含大货区块 [" + e.message + "]", false); }
+try {
+  const h2 = R.vPre({ id: "x", step: "pre", final: FIN, pre: PRE3, orders: ORD3, designState: "完结" });
+  ok("终态款状态不报错且无推进按钮", h2.indexOf("大货生产") >= 0 && h2.indexOf("已是终态") >= 0);
+} catch (e) { ok("终态款状态渲染 [" + e.message + "]", false); }
+
 console.log("\n结果：✅ "+pass+"  ❌ "+fail);
 process.exit(fail?1:0);

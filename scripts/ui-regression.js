@@ -396,6 +396,31 @@ assert((src["render-board.js"].split("\n").length) <= 400, "22ab. render-board.j
 assert((src["render-flux.js"].split("\n").length) <= 400, "22ac. render-flux.js ≤400 行");
 assert((src["post-actions.js"].split("\n").length) <= 400, "22ad. post-actions.js ≤400 行");
 
+// 23. 批 E4：款状态全链路可达（文档 §十 第 9 项「大货」/ §九 流程图 13~16 步）
+// 背景：状态机定义了「生产中/已发货/售后中/完结」，但界面无任何动作能推进到 →
+//       状态机是「断头路」，款状态永远卡在「已成团」。断言此前只查状态机规则本身，
+//       查不到「有没有入口」（结构合规 ≠ 功能可用）。
+["design-next", "design-reopen"].forEach(function (a) {
+  assert(acts[a] === true, "23a. 大货款状态推进动作存在: " + a);
+});
+assert(/data-act="design-next"/.test(src["render-flux.js"]), "23b. 大货区块有推进按钮");
+assert(/function blockBatch\s*\(/.test(src["render-flux.js"]), "23c. blockBatch（大货视图）存在");
+assert(/blockBatch/.test(src["render-extra.js"]), "23d. 预售页接入大货区块");
+// NEXT 链必须覆盖 已成团→生产中→已发货→售后中→完结
+(function () {
+  var chain = [["已成团", "生产中"], ["生产中", "已发货"], ["已发货", "售后中"], ["售后中", "完结"]];
+  var body = src["render-flux.js"] + src["post-actions.js"];
+  chain.forEach(function (p) {
+    var re = new RegExp('"' + p[0] + '"\\s*:\\s*"' + p[1] + '"');
+    assert(re.test(body), "23e. 大货推进链 " + p[0] + " → " + p[1]);
+  });
+})();
+// design-next 必须走状态机校验（不能硬改）
+assert(/canTransitDesign\s*\(/.test(src["post-actions.js"]), "23f. 大货推进走状态机校验");
+// 款状态推进不得碰订单状态（两个状态机独立，文档 §二/§三）
+assert(!/orders\s*:/.test((src["post-actions.js"].match(/ACT\["design-next"\][\s\S]*?\n  \};/) || [""])[0]),
+  "23g. 推款状态不改订单（两状态机独立）");
+
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");
 process.exit(fail === 0 ? 0 : 1);

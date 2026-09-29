@@ -23,6 +23,33 @@
       (extra || "") + "</tr>";
   }
 
+  // ---- 大货生产（文档 §十 第 9 项 / §九 流程图 第 13 步）----
+  // 款状态推进：已成团 → 生产中 → 已发货 → 售后中 → 完结。
+  // 订单侧的「发货/售后」只改订单状态，这里负责**款状态**，两者独立（文档 §二/§三）。
+  function blockBatch(d) {
+    var OM = global.OrderModel;
+    var cur = d.designState || "预售中";
+    var NEXT = { "已成团": "生产中", "生产中": "已发货", "已发货": "售后中", "售后中": "完结" };
+    var next = NEXT[cur];
+    var body = '<div class="block"><h2>大货生产</h2>' +
+      '<div class="kv"><span>款状态</span><b>' + esc(cur) + "</b></div>" +
+      '<p class="hint">大货复用第 6 步采购与第 10 步工厂的信息；这里只推款状态，不改订单。</p>';
+    if (next) {
+      var allowed = OM ? OM.canTransitDesign(cur, next) : false;
+      body += allowed
+        ? '<button type="button" class="btn wide" data-act="design-next">推进款状态：' + esc(cur) + " → " + esc(next) + "</button>"
+        : '<p class="muted">款状态「' + esc(cur) + '」不能推进到「' + esc(next) + '」。</p>';
+    } else {
+      body += '<p class="muted">款状态「' + esc(cur) + '」已是终态，无需推进。</p>';
+    }
+    // 改款重开（文档 §十一 闭环）——流团或售后后允许重开
+    var canReopen = OM ? OM.canTransitDesign(cur, "改款重开") : false;
+    if (canReopen) {
+      body += '<button type="button" class="btn ghost wide" data-act="design-reopen">改款重开（回到图透/定样）</button>';
+    }
+    return body + "</div>";
+  }
+
   // ---- 补尾款 ----
   function blockTail(d, list) {
     var wait = (list || []).filter(function (o) {
@@ -105,6 +132,7 @@
 
   global.RenderFlux = {
     groupByState: groupByState,
+    blockBatch: blockBatch,
     blockTail: blockTail, blockShip: blockShip, blockAfterSale: blockAfterSale
   };
 })(window);
