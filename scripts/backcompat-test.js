@@ -3,8 +3,9 @@ const fs=require("fs"),vm=require("vm"),path=require("path");
 const ROOT = path.join(__dirname, "..", "prototype");
 const read=f=>fs.readFileSync(path.join(ROOT,"js/core",f),"utf8");
 const ctx=vm.createContext({window:{},console,Date,Math,JSON,encodeURIComponent,parseInt,isNaN,String,Number,Array,Object});
-["router.js","ai.js","factory.js","store.js","render.js","render-extra.js"].forEach(f=>vm.runInContext(read(f),ctx,{filename:f}));
-const {R,Router,Factory}=ctx.window;
+["router.js","ai.js","factory.js","order-model.js","store.js","render.js","render-extra.js"].forEach(f=>vm.runInContext(read(f),ctx,{filename:f}));
+const {R,Router,Factory,OrderModel}=ctx.window;
+ctx.OrderModel=OrderModel; ctx.window.OrderModel=OrderModel;
 const g=ctx; // render 内部按裸全局找 Router/Factory/AI，桩里要把它们暴露成裸全局
 g.Router=Router; g.Factory=Factory; g.AI=ctx.window.AI; g.Store=ctx.window.Store;
 ctx.window.Router=Router; ctx.window.Factory=Factory;
@@ -54,8 +55,9 @@ ok("plan 的下一步是 word", Router.nextId("plan")==="word");
 ok("img 的下一步是 vote", Router.nextId("img")==="vote");
 ok("vote 的下一步是 part", Router.nextId("vote")==="part");
 ok("cost 的下一步是 final", Router.nextId("cost")==="final");
-ok("final 无下一步", Router.nextId("final")==="");
-ok("STEPS 12 步", Router.STEPS.length===12);
+ok("final 的下一步是 pre", Router.nextId("final")==="pre");
+ok("pre 无下一步", Router.nextId("pre")==="");
+ok("STEPS 13 步", Router.STEPS.length===13);
 
 
 console.log("— F. 脏 prompt 检测（color 数组化后最容易出的错）—");
@@ -104,6 +106,59 @@ try { hFinal=R.vFinal({id:"x",step:"final",words:{color:["a"]},finance:null}); o
 catch(e){ ok("vFinal 无 finance 不崩 ["+e.message+"]", false); }
 try { const h2=R.vFinal({id:"x",step:"final",words:{color:["白紫"]},finance:{cost:265,price:899,fixed:5000}}); ok("vFinal 有 finance 可渲染", h2.indexOf("公布价")>=0 && h2.indexOf("白紫")>=0); }
 catch(e){ ok("vFinal 有 finance 可渲染 ["+e.message+"]", false); }
+
+
+console.log("— I. 预售开团 / 订单模型（批 E1）—");
+const FIN={price:899,cost:265,deposit:Math.round(899*0.2),balance:899-Math.round(899*0.2),
+  leadDays:45,deadline:"2026-11-30",skus:[{color:"白紫",target:1000},{color:"黑黑",target:800}]};
+const PRE=OrderModel.openPre(FIN,null);
+ok("开团按颜色建批次", PRE.batches.length===2);
+ok("批次取定样目标数", PRE.batches[0].target===1000 && PRE.batches[1].target===800);
+ok("重复开团不重复建批次", OrderModel.openPre(FIN,PRE).batches.length===2);
+ok("无定样→开团被拒", !!OrderModel.openPre(null,null).__error);
+ok("无颜色→开团被拒", !!OrderModel.openPre({price:1,skus:[]},null).__error);
+
+const P1=OrderModel.parseOrderLines("白紫,3,540\n黑黑,2,360", PRE);
+ok("批量解析两行", P1.rows.length===2 && P1.errors.length===0);
+ok("解析带批次号", P1.rows[0].batchNo===1);
+const P2=OrderModel.parseOrderLines("白紫,3,540\n乱色,1,9\n白紫,x,1\n只有两列", PRE);
+ok("未知颜色被拒", P2.errors.some(e=>e.reason.indexOf("不在本次开团")>=0));
+ok("非法数量被拒", P2.errors.some(e=>e.reason.indexOf("数量")>=0));
+ok("列数不足被拒", P2.errors.some(e=>e.reason.indexOf("三列")>=0));
+ok("错误不影响合法行", P2.rows.length===1);
+ok("顿号也能分隔", OrderModel.parseOrderLines("白紫、3、540", PRE).rows.length===1);
+ok("空行被忽略", OrderModel.parseOrderLines("\n\n", PRE).rows.length===0);
+
+const MADE=OrderModel.makeOrders(PRE,P1.rows);
+ok("匿名ID从 D-0001 起", MADE.orders[0].anonId==="D-0001");
+ok("匿名ID递增", MADE.orders[1].anonId==="D-0002");
+ok("nextAnon 前进", MADE.nextAnon===3);
+ok("定金录入即已付定金", MADE.orders.every(o=>o.state==="已付定金"));
+ok("realNo 默认空", MADE.orders.every(o=>o.realNo===""));
+ok("订单无身份字段", MADE.orders.every(o=>!("name" in o)&&!("phone" in o)&&!("address" in o)));
+ok("ID 补零", OrderModel.nextAnonId(7)==="D-0007");
+
+ok("状态机 已付定金→待尾款", OrderModel.canTransit("已付定金","待尾款"));
+ok("状态机 待尾款→已付尾款", OrderModel.canTransit("待尾款","已付尾款"));
+ok("状态机 已付定金→已发货 非法", !OrderModel.canTransit("已付定金","已发货"));
+ok("状态机 完结 无后继", OrderModel.ORDER_FLOW["完结"].length===0);
+ok("真单号限三动作", OrderModel.REALNO_ACTS.join("/")==="发货/退款/对账");
+
+const T=OrderModel.tallyByBatch(PRE,MADE.orders);
+ok("统计按 颜色×批次 出行", T.length===2);
+ok("白紫已成团 3", T[0].got===3);
+ok("未达成团线", T[0].enough===false);
+ok("成团率 = 实际/目标", Math.abs(T[0].rate-3/1000)<1e-9);
+const refunded=Object.assign({},MADE.orders[0],{state:"已退款"});
+ok("已退款不计入成团", OrderModel.tallyByBatch(PRE,[refunded])[0].got===0);
+const overdue=Object.assign({},MADE.orders[0],{state:"定金逾期"});
+ok("定金逾期不计入成团", OrderModel.tallyByBatch(PRE,[overdue])[0].got===0);
+
+let hPre="";
+try { hPre=R.vPre({id:"x",step:"pre",final:null,orders:[]}); ok("vPre 无定样不崩", hPre.indexOf("先在第 11 步")>=0); }
+catch(e){ ok("vPre 无定样不崩 ["+e.message+"]", false); }
+try { const h=R.vPre({id:"x",step:"pre",final:FIN,pre:PRE,orders:MADE.orders}); ok("vPre 有数据可渲染", h.indexOf("D-0001")>=0 && h.indexOf("成团进度")>=0); }
+catch(e){ ok("vPre 有数据可渲染 ["+e.message+"]", false); }
 
 console.log("\n结果：✅ "+pass+"  ❌ "+fail);
 process.exit(fail?1:0);

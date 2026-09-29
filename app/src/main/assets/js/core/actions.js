@@ -315,6 +315,13 @@
     });
   }
 
+  // 预售开团动作（拆到 pre-actions.js）
+  if (global.Actions && global.Actions.registerPre) {
+    global.Actions.registerPre(ACT, {
+      patch: patch, cur: cur, report: report, toast: toast
+    });
+  }
+
   // 定样定价动作（拆到 final-actions.js，避免 actions.js 超 400 行）
   if (global.Actions && global.Actions.registerFinal) {
     global.Actions.registerFinal(ACT, {

@@ -131,6 +131,10 @@ label{display:block;margin:16px 0 8px;color:var(--ink-2);font-size:12px}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sku-row input{flex:1;margin:0}
 .sku-row .hint{margin:0;white-space:nowrap}
+
+/* 预售：定金单与成团进度用滚动表格，窄屏不横向溢出 */
+.scroll-x table{min-width:420px}
+.scroll-x td.num.gold{color:var(--gold);font-weight:600}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--ink-3);font-size:11px;font-weight:400;letter-spacing:.06em}

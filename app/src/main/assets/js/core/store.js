@@ -185,6 +185,11 @@
       // —— 步骤 final（定样定价）——
       final: null,           // { price, deposit, depositRate, leadDays, deadline, note,
                              //   skus:[{color, target}], sampledAt }
+      // —— 步骤 pre（预售开团）——
+      // 隐私边界（文档 §一）：**不存在**姓名/电话/地址字段，只有匿名 ID + 款式 + 数量 + 金额 + 状态
+      pre: null,             // { batches:[{no,color,target,openedAt}], nextAnon, openedAt }
+      orders: [],            // [{ anonId, realNo, color, batchNo, qty, amount, state, at }]
+      orderEvents: [],       // [{ at, anonId, act, from, to, why }]  每次流转留痕
       history: [{ at: new Date().toISOString(), act: "新建", from: null, to: "plan" }]
     };
   }

@@ -11,6 +11,8 @@
   function money(n) { return R.money(n); }
   // screen 由 render.js 提供（render.js 先加载），必须走 R.screen 而不是裸引用
   function screen(curId, title, sub, body) { return R.screen(curId, title, sub, body); }
+  // OrderModel 由 order-model.js 提供（factory.js 之后加载）
+  function OM() { return global.OrderModel; }
   // stepLabel 同理：render.js 的内部函数，必须走 R.stepLabel
   function stepLabel(id) { return R.stepLabel(id); }
 
@@ -304,11 +306,81 @@
     return screen("final", "定样", stepLabel("final"), body);
   }
 
+  /* ===== 预售开团（文档第 7 项）===== */
+  // 严守 §一：只记匿名 ID + 颜色 + 批次 + 数量 + 金额 + 状态；不存姓名/电话/地址
+  function vPre(d) {
+    var fin = d.final;
+    var pre = d.pre;
+    var orders = d.orders || [];
+    var body = "";
+
+    if (!fin || fin.__error) {
+      body += '<div class="block"><h2>预售</h2>' +
+        '<p class="hint">先在第 11 步「定样」完成定价，才能开团。</p></div>';
+      return screen("pre", "预售", stepLabel("pre"), body);
+    }
+
+    if (!pre) {
+      body += '<div class="block"><h2>开团</h2>' +
+        '<div class="kv"><span>公布价</span><span>' + money(fin.price) + "</span></div>" +
+        '<div class="kv"><span>定金</span><span>' + money(fin.deposit) + "</span></div>" +
+        '<div class="kv"><span>工期</span><span>' + fin.leadDays + " 天</span></div>" +
+        '<p class="hint">开团后按颜色各建一个批次，成团线取定样里设的目标件数。</p>' +
+        '<button type="button" class="btn primary wide" data-act="open-pre">开团（按颜色建批次）</button></div>';
+      return screen("pre", "预售", stepLabel("pre"), body);
+    }
+
+    body += '<div class="block"><h2>本次开团</h2>' +
+      '<div class="kv"><span>公布价</span><span>' + money(pre.price) + "</span></div>" +
+      '<div class="kv"><span>定金</span><span>' + money(pre.deposit) + "</span></div>" +
+      '<div class="kv"><span>成团截止</span><span>' + esc(pre.deadline || "未设") + "</span></div>" +
+      '<p class="hint">已开 ' + pre.batches.length + " 个批次（颜色 × 一团）。</p></div>";
+
+    body += '<div class="block"><h2>录入定金单</h2>' +
+      '<p class="hint">每行一条：<b>颜色,数量,金额</b>。逗号/顿号/制表符分隔都行。' +
+      '<br>App 不收款，这里只记账；也不存买家姓名、电话、地址。</p>' +
+      '<textarea id="in-orders" placeholder="白紫,3,540&#10;黑黑,2,360"></textarea>' +
+      '<button type="button" class="btn primary wide" data-act="add-orders">批量录入</button></div>';
+
+    var tally = OM().tallyByBatch(pre, orders);
+    body += '<div class="block"><h2>成团进度（颜色 × 批次）</h2><div class="scroll-x"><table><thead><tr>' +
+      "<th>颜色</th><th>批次</th><th>已成团</th><th>成团线</th><th>进度</th></tr></thead><tbody>" +
+      tally.map(function (t) {
+        var pct = Math.round(t.rate * 100);
+        return "<tr><td>" + esc(t.color) + "</td><td>第 " + t.batchNo + " 团</td>" +
+          '<td class="num">' + t.got + '</td><td class="num">' + t.target + "</td>" +
+          '<td class="num ' + (t.enough ? "gold" : "") + '">' + pct + "%</td></tr>";
+      }).join("") + "</tbody></table></div>" +
+      '<p class="hint">成团率 = 该颜色该批次的实际件数 ÷ 目标件数，按行判定。</p></div>';
+
+    if (orders.length) {
+      body += '<div class="block"><h2>定金单（' + orders.length + "）</h2>" +
+        '<p class="hint">默认只显示匿名 ID；真单号只在发货/退款/对账时录入。</p>' +
+        '<div class="scroll-x"><table><thead><tr><th>匿名ID</th><th>颜色</th><th>数量</th><th>金额</th><th>状态</th></tr></thead><tbody>' +
+        orders.map(function (o) {
+          return "<tr><td>" + esc(o.anonId) + "</td><td>" + esc(o.color) + "</td>" +
+            '<td class="num">' + o.qty + '</td><td class="num">' + money(o.amount) + "</td>" +
+            "<td>" + esc(o.state) + "</td></tr>";
+        }).join("") + "</tbody></table></div></div>";
+
+      var total = orders.reduce(function (s, o) { return s + (Number(o.amount) || 0); }, 0);
+      var sumQty = orders.reduce(function (s, o) { return s + (Number(o.qty) || 0); }, 0);
+      body += '<div class="block"><h2>合计</h2><div class="price">' + money(total) +
+        "<small> / 定金合计</small></div>" +
+        '<div class="kv"><span>订单数</span><span>' + orders.length + " 单</span></div>" +
+        '<div class="kv"><span>件数</span><span>' + sumQty + " 件</span></div>" +
+        '<p class="hint">下一批做「成团判定 + 流团退款」（文档第 8 项）。</p></div>';
+    }
+
+    return screen("pre", "预售", stepLabel("pre"), body);
+  }
+
   var _origHistory = R.vHistory;
   R.vHistory = vHistory;
   R.vPlan = vPlan;
   R.vVote = vVote;
   R.vFinal = vFinal;
+  R.vPre = vPre;
   R.aiResults = aiResults;
   R.estimateBlock = estimateBlock;
   R.epListHTML = epListHTML;

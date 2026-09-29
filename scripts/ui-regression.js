@@ -30,6 +30,8 @@ var files = {
   "vote-actions.js":  "js/core/vote-actions.js",
   "final-actions.js": "js/core/final-actions.js",
   "word-actions.js":  "js/core/word-actions.js",
+  "order-model.js":   "js/core/order-model.js",
+  "pre-actions.js":   "js/core/pre-actions.js",
   "actions.js":       "js/core/actions.js",
   "main.js":          "js/core/main.js"
 };
@@ -56,7 +58,7 @@ var codeOnly = (src["render.js"] + "\n" + src["render-extra.js"]).split("\n")
 assert(!/document\./.test(codeOnly), "1. 渲染层无 document.（含 code 行）");
 
 // 2. localStorage 只在 store.js
-["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","vote-actions.js","final-actions.js","word-actions.js","actions.js","main.js"].forEach(function (f) {
+["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","vote-actions.js","final-actions.js","pre-actions.js","word-actions.js","actions.js","main.js","order-model.js"].forEach(function (f) {
   // 排除注释
   var codeOnly = src[f].split("\n").filter(function (l) {
     var t = l.trim(); return t && !t.startsWith("*") && !t.startsWith("//");
@@ -76,14 +78,14 @@ Object.keys(src).forEach(function (f) {
 });
 
 // 5. 全部步骤注册（0 企划 + 原九步）
-["plan","word","img","vote","part","check","buy","look","model","fact","cost","final"].forEach(function (id) {
+["plan","word","img","vote","part","check","buy","look","model","fact","cost","final","pre"].forEach(function (id) {
   assert(new RegExp("registerPage\\([\"']" + id + "[\"']").test(src["main.js"]),
     "5. main.js 注册视图 " + id);
 });
 
 // 6. Router.STEPS 有 10 步
 var stepsCount = (src["router.js"].match(/\{ id: "/g) || []).length;
-assert(stepsCount === 12, "6. Router.STEPS 恰好 12 步（实际 " + stepsCount + "）");
+assert(stepsCount === 13, "6. Router.STEPS 恰好 13 步（实际 " + stepsCount + "）");
 
 // 7. 所有 data-act 都有对应处理函数
 var acts = {};
@@ -95,6 +97,7 @@ while ((m = regex.exec(src["settings.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["vote-actions.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["final-actions.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["word-actions.js"]))) acts[m[1]] = true;
+while ((m = regex.exec(src["pre-actions.js"]))) acts[m[1]] = true;
 // 收集 render 里出现的所有 data-act
 var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
@@ -127,13 +130,13 @@ assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store �
 // 10. 加载顺序依赖：index.html 加载顺序为 router→ai→factory→store→render→actions→main
 var htmlScripts = (src["index.html"].match(/src="([^"]+)"/g) || [])
   .map(function (s) { return s.match(/src="([^"]+)"/)[1]; });
-var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/final-actions.js","js/core/word-actions.js","js/core/actions.js","js/core/main.js"];
+var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/order-model.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/final-actions.js","js/core/pre-actions.js","js/core/word-actions.js","js/core/actions.js","js/core/main.js"];
 // 顺序：router, ai, factory 是纯模块无依赖；store 也不依赖；render 依赖 Router/AI；actions 依赖 Store/Router/AI；main 依赖全部
 var orderIdx = {};
 expected.forEach(function (e, i) { orderIdx[e] = i; });
 var actualIdx = {};
 htmlScripts.forEach(function (s, i) { actualIdx[s] = i; });
-assert(htmlScripts.length === 12, "10a. index.html 加载 12 个脚本（实际 " + htmlScripts.length + "）");
+assert(htmlScripts.length === 14, "10a. index.html 加载 14 个脚本（实际 " + htmlScripts.length + "）");
 // render.js 必须在 router.js 后
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/router.js"], "10b. render 在 router 后");
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/ai.js"],     "10c. render 在 ai 后");
@@ -276,6 +279,34 @@ assert(/d\.finance\.cost|finance\.cost/.test(src["final-actions.js"]), "18j. 定
     "19. render-extra.js 调用 render.js 内部函数时走了 wrapper/R." +
     (offenders.length ? " → 裸用: " + offenders.join(",") : ""));
 })();
+
+
+// 20. 批 E1：预售开团 + 订单模型（含 §一 隐私硬约束）
+assert(/function vPre\s*\(/.test(src["render-extra.js"]), "20a. 预售视图 vPre 存在");
+["open-pre","add-orders"].forEach(function (a) { assert(acts[a] === true, "20b. 预售动作存在: " + a); });
+assert(/function registerPre\s*\(/.test(src["pre-actions.js"]), "20c. pre-actions 已注册");
+assert(/function openPre\s*\(/.test(src["order-model.js"]), "20d. openPre 存在");
+assert(/function parseOrderLines\s*\(/.test(src["order-model.js"]), "20e. 批量解析 parseOrderLines 存在");
+assert(/function tallyByBatch\s*\(/.test(src["order-model.js"]), "20f. 按颜色×批次统计存在");
+// §一 隐私硬约束：订单结构里不许出现身份字段
+var omCode = src["order-model.js"].split("\n").filter(function (l) {
+  var t = l.trim(); return t && !t.startsWith("*") && !t.startsWith("//");
+}).join("\n");
+["name","phone","tel","address","addr","buyer"].forEach(function (bad) {
+  assert(!new RegExp(bad + "\\s*:", "i").test(omCode), "20g. 订单模型无身份字段: " + bad);
+});
+// 真单号默认空 + 只有三个动作能读
+assert(/realNo:\s*""/.test(src["order-model.js"]), "20h. realNo 默认空");
+assert(/REALNO_ACTS\s*=\s*\[[^\]]*发货[^\]]*退款[^\]]*对账/.test(src["order-model.js"]),
+  "20i. 真单号限「发货/退款/对账」三个动作");
+// 状态机写死且可校验
+assert(/ORDER_FLOW\s*=\s*\{/.test(src["order-model.js"]), "20j. 订单状态机存在");
+assert(/function canTransit\s*\(/.test(src["order-model.js"]), "20k. 非法流转校验存在");
+// 默认成团数单一定义源（不许两处各写一份）
+var omDefs = (src["order-model.js"].match(/DEFAULT_TARGET\s*=\s*1000/g) || []).length;
+var fcDefs = (src["factory.js"].match(/DEFAULT_TARGET\s*=\s*1000/g) || []).length;
+assert(omDefs === 0 && fcDefs === 1, "20l. DEFAULT_TARGET 只在 factory.js 定义一次");
+assert(/global\.Factory\.DEFAULT_TARGET/.test(src["order-model.js"]), "20m. order-model 从 Factory 取默认值");
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");

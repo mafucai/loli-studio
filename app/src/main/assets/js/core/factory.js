@@ -294,6 +294,7 @@
     return { material: material, labor: labor, fixed: fixed, qty: qty, price: price, cost: cost, fee: fee, shipping: shipping, pack: pack, profit: profit, margin: price ? profit / price * 100 : 0, income: price * qty, expense: (cost + fee + shipping + pack) * qty, totalProfit: profit * qty };
   }
 
+
   global.Factory = {
     designWords: designWords, bom: bom, dedup: dedup, sourcing: sourcing,
     combo: combo, look: look, model: model, factories: factories, finance: finance,
