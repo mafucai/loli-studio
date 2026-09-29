@@ -183,11 +183,28 @@ assert(/function colors\s*\(/.test(src["render.js"]), "15n. 渲染层有 color �
 // 不写死步骤字面量：用 Router.prevId 取相邻步
 assert(!/ORDER\.indexOf/.test(src["render.js"]), "15o. 渲染层不再写死 ORDER 数组");
 
+// 16b. R8：脚本禁止硬编码绝对路径（D7 教训 —— 本地 pwd 恰好命中，CI 必炸）
+var fsWalk = require("fs").readdirSync(path.join(__dirname));
+var badPath = [];
+fsWalk.filter(function (n) { return /\.js$/.test(n); }).forEach(function (n) {
+  var p = path.join(__dirname, n);
+  var code = fs.readFileSync(p, "utf8");
+  // 只看字符串字面量里的绝对路径（排除注释行）
+  code.split("\n").forEach(function (line, i) {
+    var t = line.trim();
+    if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) return;
+    // 只禁「指向某台特定机器目录结构」的路径；/tmp/ 是正当的临时输出，不禁
+    if (/["']\/(workspace|home|Users)\//.test(line)) badPath.push(n + ":" + (i + 1));
+  });
+});
+assert(badPath.length === 0,
+  "16b. R8 脚本无硬编码绝对路径" + (badPath.length ? " → " + badPath.join(", ") : ""));
+
 // 16. color 数组化：不在源码里做正则扫描（容易误报），改由 backcompat-test.js 实测。
 //     这里只断言「兼容函数存在且被导出」，实测交给 backcompat-test.js（含 undefined 串检查）。
 assert(/function toColors\s*\(/.test(src["factory.js"]) && /toColors:\s*toColors/.test(src["factory.js"]),
   "16a. factory.toColors 定义并导出");
-assert(/function colors\s*\(/.test(src["render.js"]), "16b. render 层有 color 兼容函数");
+assert(/function colors\s*\(/.test(src["render.js"]), "16d. render 层有 color 兼容函数");
 assert(/function toColorsStr\s*\(/.test(src["ai.js"]) || /toColors/.test(src["ai.js"]),
   "16c. ai.js 有 color 兼容转换");
 
