@@ -14,7 +14,8 @@
     { id: "look",  n: 7, title: "组合" },
     { id: "model", n: 8, title: "模特" },
     { id: "fact",  n: 9, title: "工厂" },
-    { id: "cost",  n: 10, title: "成本" }
+    { id: "cost",  n: 10, title: "成本" },
+    { id: "final", n: 11, title: "定样" }
   ];
   var views = {};
 

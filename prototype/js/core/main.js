@@ -17,6 +17,7 @@
   Router.registerPage("model",   R.vModel);
   Router.registerPage("fact",    R.vFact);
   Router.registerPage("cost",    R.vCost);
+  Router.registerPage("final",   R.vFinal);
   Router.registerPage("history", R.vHistory);
 
   // 全局状态

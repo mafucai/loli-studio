@@ -53,8 +53,9 @@ ok("plan 无上一步", Router.prevId("plan")==="");
 ok("plan 的下一步是 word", Router.nextId("plan")==="word");
 ok("img 的下一步是 vote", Router.nextId("img")==="vote");
 ok("vote 的下一步是 part", Router.nextId("vote")==="part");
-ok("cost 无下一步", Router.nextId("cost")==="");
-ok("STEPS 11 步", Router.STEPS.length===11);
+ok("cost 的下一步是 final", Router.nextId("cost")==="final");
+ok("final 无下一步", Router.nextId("final")==="");
+ok("STEPS 12 步", Router.STEPS.length===12);
 
 
 console.log("— F. 脏 prompt 检测（color 数组化后最容易出的错）—");
@@ -77,6 +78,32 @@ ok("printDesc 正常", Factory.printDesc({theme:"甜系",picks:["p1"]})==="缎�
 console.log("— G. 企划字段缺省安全 —");
 ok("无 theme 时 vPlan 提示先选主题", R.vPlan({}).indexOf("先选一个主题风格")>=0);
 ok("有 theme 无 prints 时提示", R.vPlan({theme:"哥特"}).indexOf("柄图是出图的输入")>=0);
+
+
+console.log("— H. 定样定价（批 D）—");
+ok("buildSkus 默认 1000", JSON.stringify(Factory.buildSkus(["a","b"]))==='[{"color":"a","target":1000},{"color":"b","target":1000}]');
+ok("buildSkus 沿用已改值", Factory.buildSkus(["a","b"],[{color:"a",target:500}])[0].target===500);
+ok("buildSkus 未列颜色→默认", Factory.buildSkus(["a","b"],[{color:"a",target:500}])[1].target===1000);
+ok("buildSkus 空颜色→空数组", Factory.buildSkus([]).length===0);
+const F1=Factory.financeFinal({price:899,cost:265,depositRate:20,leadDays:45,skus:[{color:"a",target:1000},{color:"b",target:800}],fixed:5000});
+ok("定金=价×比例", F1.deposit===Math.round(899*0.2));
+ok("尾款=价-定金", F1.balance===899-F1.deposit);
+ok("总目标=各色之和", F1.totalTarget===1800);
+ok("单件毛利=价-成本", F1.unitMargin===899-265);
+ok("保本件数=固定成本/毛利向上取整", F1.breakEven===Math.ceil(5000/634));
+ok("满额利润=毛利×总目标", F1.fullProfit===634*1800);
+ok("价≤0 被拒", !!Factory.financeFinal({price:0,cost:1,depositRate:20,leadDays:45,skus:[{color:"a",target:1}]}).__error);
+ok("无颜色被拒", !!Factory.financeFinal({price:9,cost:1,depositRate:20,leadDays:45,skus:[]}).__error);
+ok("目标件数≤0 被拒", !!Factory.financeFinal({price:9,cost:1,depositRate:20,leadDays:45,skus:[{color:"a",target:0}]}).__error);
+ok("工期≤0 被拒", !!Factory.financeFinal({price:9,cost:1,depositRate:20,leadDays:0,skus:[{color:"a",target:1}]}).__error);
+ok("定金比例>100 被拒", !!Factory.financeFinal({price:9,cost:1,depositRate:101,leadDays:5,skus:[{color:"a",target:1}]}).__error);
+ok("价低于成本→保本件数为 -1", Factory.financeFinal({price:100,cost:200,depositRate:20,leadDays:5,skus:[{color:"a",target:1}],fixed:100}).breakEven===-1);
+// 老设计单（无 final 字段）渲染定样页不崩
+let hFinal="";
+try { hFinal=R.vFinal({id:"x",step:"final",words:{color:["a"]},finance:null}); ok("vFinal 无 finance 不崩", hFinal.indexOf("先在第 10 步")>=0); }
+catch(e){ ok("vFinal 无 finance 不崩 ["+e.message+"]", false); }
+try { const h2=R.vFinal({id:"x",step:"final",words:{color:["白紫"]},finance:{cost:265,price:899,fixed:5000}}); ok("vFinal 有 finance 可渲染", h2.indexOf("公布价")>=0 && h2.indexOf("白紫")>=0); }
+catch(e){ ok("vFinal 有 finance 可渲染 ["+e.message+"]", false); }
 
 console.log("\n结果：✅ "+pass+"  ❌ "+fail);
 process.exit(fail?1:0);

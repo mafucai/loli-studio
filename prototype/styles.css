@@ -122,6 +122,15 @@ label{display:block;margin:16px 0 8px;color:var(--ink-2);font-size:12px}
   color:var(--ink-3);text-align:center}
 .ver.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
 .ver.on span{color:var(--gold)}
+
+/* 定样：分色成团线（每色一行） */
+.sku-row{display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--line)}
+.sku-row:last-child{border-bottom:0}
+.sku-color{flex:0 0 84px;font-size:14px;color:var(--gold);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sku-row input{flex:1;margin:0}
+.sku-row .hint{margin:0;white-space:nowrap}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--ink-3);font-size:11px;font-weight:400;letter-spacing:.06em}

@@ -28,6 +28,8 @@ var files = {
   "render-extra.js":  "js/core/render-extra.js",
   "settings.js":      "js/core/settings.js",
   "vote-actions.js":  "js/core/vote-actions.js",
+  "final-actions.js": "js/core/final-actions.js",
+  "word-actions.js":  "js/core/word-actions.js",
   "actions.js":       "js/core/actions.js",
   "main.js":          "js/core/main.js"
 };
@@ -54,7 +56,7 @@ var codeOnly = (src["render.js"] + "\n" + src["render-extra.js"]).split("\n")
 assert(!/document\./.test(codeOnly), "1. 渲染层无 document.（含 code 行）");
 
 // 2. localStorage 只在 store.js
-["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","vote-actions.js","actions.js","main.js"].forEach(function (f) {
+["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","vote-actions.js","final-actions.js","word-actions.js","actions.js","main.js"].forEach(function (f) {
   // 排除注释
   var codeOnly = src[f].split("\n").filter(function (l) {
     var t = l.trim(); return t && !t.startsWith("*") && !t.startsWith("//");
@@ -74,23 +76,25 @@ Object.keys(src).forEach(function (f) {
 });
 
 // 5. 全部步骤注册（0 企划 + 原九步）
-["plan","word","img","vote","part","check","buy","look","model","fact","cost"].forEach(function (id) {
+["plan","word","img","vote","part","check","buy","look","model","fact","cost","final"].forEach(function (id) {
   assert(new RegExp("registerPage\\([\"']" + id + "[\"']").test(src["main.js"]),
     "5. main.js 注册视图 " + id);
 });
 
 // 6. Router.STEPS 有 10 步
 var stepsCount = (src["router.js"].match(/\{ id: "/g) || []).length;
-assert(stepsCount === 11, "6. Router.STEPS 恰好 11 步（实际 " + stepsCount + "）");
+assert(stepsCount === 12, "6. Router.STEPS 恰好 12 步（实际 " + stepsCount + "）");
 
 // 7. 所有 data-act 都有对应处理函数
 var acts = {};
 var m;
 var regex = /\bACT\["([^"]+)"\]\s*=/g;
 while ((m = regex.exec(src["actions.js"]))) acts[m[1]] = true;
-// 设置相关动作已拆到 settings.js；图透动作已拆到 vote-actions.js
+// 设置相关动作已拆到 settings.js；图透拆到 vote-actions.js；定样拆到 final-actions.js
 while ((m = regex.exec(src["settings.js"]))) acts[m[1]] = true;
 while ((m = regex.exec(src["vote-actions.js"]))) acts[m[1]] = true;
+while ((m = regex.exec(src["final-actions.js"]))) acts[m[1]] = true;
+while ((m = regex.exec(src["word-actions.js"]))) acts[m[1]] = true;
 // 收集 render 里出现的所有 data-act
 var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
@@ -123,13 +127,13 @@ assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store �
 // 10. 加载顺序依赖：index.html 加载顺序为 router→ai→factory→store→render→actions→main
 var htmlScripts = (src["index.html"].match(/src="([^"]+)"/g) || [])
   .map(function (s) { return s.match(/src="([^"]+)"/)[1]; });
-var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/actions.js","js/core/main.js"];
+var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/final-actions.js","js/core/word-actions.js","js/core/actions.js","js/core/main.js"];
 // 顺序：router, ai, factory 是纯模块无依赖；store 也不依赖；render 依赖 Router/AI；actions 依赖 Store/Router/AI；main 依赖全部
 var orderIdx = {};
 expected.forEach(function (e, i) { orderIdx[e] = i; });
 var actualIdx = {};
 htmlScripts.forEach(function (s, i) { actualIdx[s] = i; });
-assert(htmlScripts.length === 10, "10a. index.html 加载 10 个脚本（实际 " + htmlScripts.length + "）");
+assert(htmlScripts.length === 12, "10a. index.html 加载 12 个脚本（实际 " + htmlScripts.length + "）");
 // render.js 必须在 router.js 后
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/router.js"], "10b. render 在 router 后");
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/ai.js"],     "10c. render 在 ai 后");
@@ -172,9 +176,9 @@ assert(/data-act="save-avoid"/.test(src["render.js"]), "15e. 设计词页有保�
 assert(/picks\.length\)\s*\{\s*body \+= [\s\S]{0,200}?nextBtn\("word"/.test(src["render-extra.js"]),
   "15g. 柄图未选时不给「下一步 · 设计词」");
 // 避免词/主题/柄图真的进 prompt：actions 里调用 buildWordPrompt
-assert(/AI\.buildWordPrompt\(/.test(src["actions.js"]), "15h. gen-words 调用 buildWordPrompt");
-assert(/avoid:\s*avoid/.test(src["actions.js"]), "15i. 避免词传入 prompt");
-assert(/theme:\s*theme/.test(src["actions.js"]), "15j. 主题传入 prompt");
+assert(/AI\.buildWordPrompt\(/.test(src["word-actions.js"]), "15h. gen-words 调用 buildWordPrompt");
+assert(/avoid:\s*avoid/.test(src["word-actions.js"]), "15i. 避免词传入 prompt");
+assert(/theme:\s*theme/.test(src["word-actions.js"]), "15j. 主题传入 prompt");
 // color 数组：工厂函数存在
 assert(/function toColors\s*\(/.test(src["factory.js"]), "15k. factory.toColors 存在");
 assert(/global\.Factory[\s\S]{0,400}?toColors:\s*toColors/.test(src["factory.js"]), "15l. toColors 已导出");
@@ -226,6 +230,52 @@ assert(!/splice|\bpop\(|\bshift\(/.test(pv), "17h. pushVersion 不删旧版本")
 // 步骤文案不再写死
 assert(!/共 9 步/.test(src["render.js"]), "17i. 渲染层不再写死「共 9 步」");
 assert(/function stepLabel\s*\(/.test(src["render.js"]), "17j. 步骤文案从 Router.STEPS 动态取");
+
+
+// 18. 批 D：定样定价
+assert(/function vFinal\s*\(/.test(src["render-extra.js"]), "18a. 定样视图 vFinal 存在");
+assert(acts["run-final"] === true, "18b. 定样动作 run-final 存在");
+assert(/function buildSkus\s*\(/.test(src["factory.js"]), "18c. buildSkus 存在");
+assert(/function financeFinal\s*\(/.test(src["factory.js"]), "18d. financeFinal 存在");
+assert(/DEFAULT_TARGET\s*=\s*1000/.test(src["factory.js"]), "18e. 默认成团件数 1000");
+assert(/DEFAULT_DEPOSIT_RATE/.test(src["factory.js"]), "18f. 默认定金比例存在");
+// SKU 输入用 data-sku（不是 data-act，避免与动作系统混淆）
+assert(/data-sku="/.test(src["render-extra.js"]), "18g. SKU 输入用 data-sku");
+assert(!/data-act="set-target"/.test(src["render-extra.js"]), "18h. 未把 SKU 输入伪装成动作");
+// cost 页不动（方案 B）
+assert(/cost-fee/.test(src["render.js"]) && /cost-price/.test(src["render.js"]),
+  "18i. cost 页原有输入未被移除（方案 B：cost 不动）");
+// 定样页读的是 finance.cost（成本页结果），不是自己重算
+assert(/d\.finance\.cost|finance\.cost/.test(src["final-actions.js"]), "18j. 定样引用成本页结果");
+
+
+// 19. R3 落地：render-extra.js 若调用 render.js 的内部函数，必须走 R.xxx
+//     或被本文件的同名 wrapper 包住。裸引用会在运行时 ReferenceError（D2/D8 同类）。
+(function () {
+  var extra = src["render-extra.js"];
+  var code = extra.split("\n").filter(function (l) {
+    var t = l.trim(); return t && !t.startsWith("*") && !t.startsWith("//");
+  }).join("\n");
+  // 本文件自己定义为 wrapper 的函数名（function xxx(...) { return R.xxx(...) }）——视为已包装
+  var wrapped = {};
+  var wr = /function\s+(\w+)\s*\([^)]*\)\s*\{\s*return\s+R\.\w+/g, w;
+  while ((w = wr.exec(code)) !== null) wrapped[w[1]] = true;
+  var internals = ["screen", "stepLabel", "dots", "pageBar"];
+  var offenders = [];
+  internals.forEach(function (fn) {
+    if (wrapped[fn]) return;                                  // 有 wrapper，安全
+    var re = new RegExp("(^|[^\\w.])" + fn + "\\s*\\(", "g"), m;
+    while ((m = re.exec(code)) !== null) {
+      var prefix = code.slice(Math.max(0, m.index - 12), m.index + m[1].length);
+      if (/function\s*$/.test(prefix)) continue;              // 正在定义（非调用）
+      offenders.push(fn);
+      break;
+    }
+  });
+  assert(offenders.length === 0,
+    "19. render-extra.js 调用 render.js 内部函数时走了 wrapper/R." +
+    (offenders.length ? " → 裸用: " + offenders.join(",") : ""));
+})();
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");

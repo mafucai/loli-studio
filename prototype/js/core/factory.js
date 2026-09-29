@@ -105,6 +105,65 @@
     return list;
   }
 
+  /* ===== 定样定价（文档第 6 项）===== */
+  // 目标成团件数默认 1000，支持按款/批次/颜色覆盖（文档 §六补充：分色成团）
+  var DEFAULT_TARGET = 1000;
+  var DEFAULT_DEPOSIT_RATE = 20;   // 定金默认 20%
+
+  // 按颜色生成 SKU 行：每个颜色一行，默认 1000 件；已有设置则沿用（不覆盖用户改过的）
+  function buildSkus(colors, existing) {
+    var list = Array.isArray(colors) ? colors.filter(Boolean) : [];
+    var old = Array.isArray(existing) ? existing : [];
+    var map = {};
+    old.forEach(function (s) { if (s && s.color) map[String(s.color)] = s; });
+    return list.map(function (c) {
+      var prev = map[String(c)];
+      return {
+        color: String(c),
+        target: prev && isFinite(Number(prev.target)) && Number(prev.target) > 0
+          ? Number(prev.target) : DEFAULT_TARGET
+      };
+    });
+  }
+
+  // 定样定价计算 + 校验（纯函数）
+  // 返回 { __error } 或完整结果
+  function financeFinal(input) {
+    var price = Number(input.price);
+    var cost = Number(input.cost);          // 来自第 10 步的单件成本
+    var rate = Number(input.depositRate);
+    var leadDays = Number(input.leadDays);
+    var skus = Array.isArray(input.skus) ? input.skus : [];
+
+    if (!isFinite(price) || price <= 0) return { __error: "公布价必须大于 0" };
+    if (!isFinite(rate) || rate < 0 || rate > 100) return { __error: "定金比例须在 0~100 之间" };
+    if (!isFinite(leadDays) || leadDays <= 0) return { __error: "工期必须是正整数天" };
+    if (!skus.length) return { __error: "至少要有一个颜色（没有颜色就没有 SKU）" };
+    for (var i = 0; i < skus.length; i++) {
+      var t = Number(skus[i].target);
+      if (!isFinite(t) || t <= 0) return { __error: "「" + skus[i].color + "」的目标成团件数必须大于 0" };
+    }
+
+    var deposit = Math.round(price * rate / 100);
+    var balance = price - deposit;
+    var totalTarget = skus.reduce(function (s, x) { return s + Number(x.target); }, 0);
+    // 保本件数：固定成本之外，单件毛利为 price - cost
+    var unitMargin = price - cost;
+    var breakEven = unitMargin > 0 ? Math.ceil(Number(input.fixed || 0) / unitMargin) : -1;
+    return {
+      price: price, cost: cost, deposit: deposit, balance: balance, depositRate: rate,
+      leadDays: leadDays, deadline: input.deadline || "",
+      skus: skus.map(function (x) { return { color: String(x.color), target: Number(x.target) }; }),
+      totalTarget: totalTarget,
+      unitMargin: unitMargin,
+      breakEven: breakEven,
+      // 成团后的满额收入（按目标件数）
+      fullIncome: price * totalTarget,
+      fullProfit: unitMargin * totalTarget,
+      at: new Date().toISOString()
+    };
+  }
+
   // 1) 设计词：给一句 prompt 返回结构化设计词
   function designWords(prompt) {
     var rnd = R(prompt || "empty");
@@ -241,6 +300,8 @@
     toColors: toColors, THEMES: THEMES, AVOID_TAGS: AVOID_TAGS,
     printCandidates: printCandidates, printDesc: printDesc,
     VOTE_CHOICES: VOTE_CHOICES, REVISE_REASONS: REVISE_REASONS,
-    pushVersion: pushVersion, pushVote: pushVote
+    pushVersion: pushVersion, pushVote: pushVote,
+    DEFAULT_TARGET: DEFAULT_TARGET, DEFAULT_DEPOSIT_RATE: DEFAULT_DEPOSIT_RATE,
+    buildSkus: buildSkus, financeFinal: financeFinal
   };
 })(window);

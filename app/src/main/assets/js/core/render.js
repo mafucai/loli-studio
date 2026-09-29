@@ -327,6 +327,7 @@
 
   global.R = {
     esc: esc, money: money, tabbar: tabbar, colors: colors, screen: screen,
+    stepLabel: stepLabel,
     vWord: vWord, vImg: vImg, vPart: vPart, vCheck: vCheck, vBuy: vBuy,
     vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost
   };

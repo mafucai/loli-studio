@@ -11,6 +11,8 @@
   function money(n) { return R.money(n); }
   // screen 由 render.js 提供（render.js 先加载），必须走 R.screen 而不是裸引用
   function screen(curId, title, sub, body) { return R.screen(curId, title, sub, body); }
+  // stepLabel 同理：render.js 的内部函数，必须走 R.stepLabel
+  function stepLabel(id) { return R.stepLabel(id); }
 
   /* 0 企划：主题风格 + 柄图（文档【第二层】第 0 步，必须在设计词之前） */
   function vPlan(d) {
@@ -243,10 +245,70 @@
     return screen("vote", "图透", "第 3 步 · 多版本对比与意见", body);
   }
 
+  /* ===== 定样定价（文档第 6 项）===== */
+  // cost 页不动（算成本）；本页做对外定价 + 成团线 + 工期 + SKU
+  function vFinal(d) {
+    var f = d.finance;
+    var colors = R.colors(d.words ? d.words.color : []);
+    var body = "";
+
+    if (!f || f.error) {
+      body += '<div class="block"><h2>定样</h2>' +
+        '<p class="hint">先在第 10 步「成本」里算出单件成本，再来定样定价。</p></div>';
+      return screen("final", "定样", stepLabel("final"), body);
+    }
+
+    body += '<div class="block"><h2>成本依据（来自成本页）</h2>' +
+      '<div class="kv"><span>单件成本</span><span>' + money(f.cost) + "</span></div>" +
+      '<div class="kv"><span>成本页填的售价</span><span>' + money(f.price) + "</span></div>" +
+      '<p class="hint">这里填的是<b>对外公布价</b>，可以和成本页的测算售价不同。</p></div>';
+
+    var fin = d.final;
+    var skus = fin && fin.skus && fin.skus.length ? fin.skus : Factory.buildSkus(colors);
+    body += '<div class="block"><h2>公布价格与工期</h2><div class="grid2">' +
+      '<div><label for="fin-price">公布价（元）</label><input id="fin-price" inputmode="decimal" placeholder="例如 899" value="' + esc(fin ? fin.price : "") + '"></div>' +
+      '<div><label for="fin-rate">定金比例（%）</label><input id="fin-rate" inputmode="decimal" placeholder="20" value="' + esc(fin ? fin.depositRate : Factory.DEFAULT_DEPOSIT_RATE) + '"></div>' +
+      '<div><label for="fin-lead">工期（天）</label><input id="fin-lead" inputmode="numeric" placeholder="例如 45" value="' + esc(fin ? fin.leadDays : "") + '"></div>' +
+      '<div><label for="fin-deadline">成团截止日期</label><input id="fin-deadline" placeholder="例如 2026-11-30" value="' + esc(fin ? fin.deadline : "") + '"></div>' +
+      "</div><p class=\"hint\">成团线默认 " + Factory.DEFAULT_TARGET + " 件，可逐色覆盖（分色成团）。</p></div>";
+
+    body += '<div class="block"><h2>分色成团线</h2>' +
+      (colors.length ? "" : '<p class="warn-note">这条设计单没有颜色（words.color 为空），无法设置 SKU。回设计词页重新生成。</p>') +
+      '<div class="stack">' + skus.map(function (s, i) {
+        return '<div class="sku-row"><span class="sku-color">' + esc(s.color) + "</span>" +
+          '<input data-sku="' + i + '" data-color="' + esc(s.color) +
+          '" inputmode="numeric" value="' + s.target + '" placeholder="目标件数">' +
+          '<span class="hint">件成团</span></div>';
+      }).join("") + "</div></div>";
+
+    body += '<div class="block"><h2>算出定样</h2>' +
+      '<button type="button" class="btn primary wide" data-act="run-final">生成定样</button></div>';
+
+    if (fin && !fin.__error) {
+      body += '<div class="block"><h2>定样结果</h2>' +
+        '<div class="price">' + money(fin.price) + "<small> / 件公布价</small></div>" +
+        '<div class="hr"></div>' +
+        '<div class="kv"><span>定金</span><span>' + money(fin.deposit) + "</span></div>" +
+        '<div class="kv"><span>尾款</span><span>' + money(fin.balance) + "</span></div>" +
+        '<div class="kv"><span>工期</span><span>' + fin.leadDays + " 天</span></div>" +
+        (fin.deadline ? '<div class="kv"><span>成团截止</span><span>' + esc(fin.deadline) + "</span></div>" : "") +
+        '<div class="kv"><span>总目标件数</span><span>' + fin.totalTarget + " 件</span></div>" +
+        '<div class="kv"><span>单件毛利</span><span>' + money(fin.unitMargin) + "</span></div>" +
+        '<div class="kv"><span>满额利润</span><span class="gold">' + money(fin.fullProfit) + "</span></div>" +
+        (fin.breakEven > 0
+          ? '<div class="kv"><span>保本件数</span><span>' + fin.breakEven + " 件</span></div>"
+          : '<p class="warn-note">公布价低于单件成本，怎么卖都亏。</p>') +
+        "</div>";
+    }
+
+    return screen("final", "定样", stepLabel("final"), body);
+  }
+
   var _origHistory = R.vHistory;
   R.vHistory = vHistory;
   R.vPlan = vPlan;
   R.vVote = vVote;
+  R.vFinal = vFinal;
   R.aiResults = aiResults;
   R.estimateBlock = estimateBlock;
   R.epListHTML = epListHTML;

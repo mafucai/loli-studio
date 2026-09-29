@@ -182,6 +182,9 @@
       factories: null,       // 步骤 fact
       finance: null,         // 步骤 cost
       pickedFactory: null,
+      // —— 步骤 final（定样定价）——
+      final: null,           // { price, deposit, depositRate, leadDays, deadline, note,
+                             //   skus:[{color, target}], sampledAt }
       history: [{ at: new Date().toISOString(), act: "新建", from: null, to: "plan" }]
     };
   }
