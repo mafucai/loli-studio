@@ -521,6 +521,41 @@ assert(!/orders\s*:/.test((src["post-actions.js"].match(/ACT\["design-next"\][\s
   }
 })();
 
+/* ===== 组 26：P2 技术债防再犯 ===== */
+(function () {
+  // 26a. esc 只能有一份真实现（render.js 的 R.esc），其余文件必须走 R.esc
+  var rawEsc = [];
+  Object.keys(src).forEach(function (k) {
+    if (/\.bak/.test(k) || k === "render.js") return;
+    if (!/\.js$/.test(k)) return;
+    // 自造转义实现的特征：函数体内出现 .replace(/&/g 之类
+    if (/function\s+esc2?\s*\([^)]*\)\s*\{[^}]*\.replace\(/.test(src[k])) rawEsc.push(k);
+  });
+  assert(rawEsc.length === 0, "26a. esc 只有 render.js 一份实现（其余走 R.esc）" +
+    (rawEsc.length ? "：自造于 " + rawEsc.join(",") : ""));
+
+  // 26b. store 写失败不得静默（RISK_CHECKLIST：失败必须有提示）
+  var storeSrc = src["store.js"] || "";
+  assert(/localStorage\.setItem/.test(storeSrc) &&
+         /__errAdd|Actions\.toast/.test(storeSrc) &&
+         !/catch\s*\([^)]*\)\s*\{\s*\/\*[^*]*静默/.test(storeSrc),
+    "26b. store 写失败会上报（不静默）");
+
+  // 26c. 无 arguments[n] 隐式取参（可读性/易错）
+  var argFiles = [];
+  Object.keys(src).forEach(function (k) {
+    if (/\.bak/.test(k)) return;
+    if (/arguments\[\d\]/.test(src[k])) argFiles.push(k);
+  });
+  assert(argFiles.length === 0, "26c. 无 arguments[n] 隐式取参" +
+    (argFiles.length ? "：" + argFiles.join(",") : ""));
+
+  // 26d. vPre 拆分后各块函数存在（防再膨胀回单函数）
+  assert(/function blockJudge\s*\(/.test(src["render-extra.js"]), "26d. vPre 已拆出 blockJudge");
+  assert(/function blockRefund\s*\(/.test(src["render-extra.js"]), "26e. vPre 已拆出 blockRefund");
+  assert(/function blockDesignState\s*\(/.test(src["render-extra.js"]), "26f. vPre 已拆出 blockDesignState");
+})();
+
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");
 process.exit(fail === 0 ? 0 : 1);

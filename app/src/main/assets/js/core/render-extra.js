@@ -134,6 +134,62 @@
 
   /* ===== 定样定价（文档第 6 项）===== */
   // cost 页不动（算成本）；本页做对外定价 + 成团线 + 工期 + SKU
+  /* ===== vPre 的三个拆出块（原 vPre 125 行超 60 行规则 → 拆为可独立阅读的块函数）===== */
+
+  // 成团判定块（文档 §四 分色成团 / §五 流团）
+  function blockJudge(pre, j) {
+    var due = OM().isDue(pre.deadline);
+    var html = '<div class="block"><h2>成团判定</h2>' +
+      '<p class="hint">本款<b>分色成团</b>：未达线颜色将流团，并退还该色定金。' +
+      (pre.deadline ? "<br>成团截止：" + esc(pre.deadline) + (due ? "（已到期）" : "（未到期，可提前判）") : "<br>未设截止日期，可提前判。") +
+      "</p>" +
+      '<button type="button" class="btn primary wide" data-act="judge-pre">' +
+      (j ? "重新判定" : "判定成团") + "</button></div>";
+
+    if (!j) return html;
+    var label = j.designState === "已成团" ? (j.partial ? "部分成团" : "全部成团") : "已流团";
+    html += '<div class="block"><h2>判定结果 · ' + esc(label) + "</h2>" +
+      (j.partial ? '<p class="warn-note">够线的颜色正常做；不够线的颜色单独流团，退还该色定金。</p>' : "") +
+      '<div class="stack">' + j.rows.map(function (r) {
+        return '<div class="hr"></div><strong>' + esc(r.color) + " · 第 " + r.batchNo + " 团</strong>" +
+          '<p class="hint">' + r.got + " / " + r.target + " 件（" + Math.round(r.rate * 100) + "%） → " +
+          (r.enough ? '<span class="gold">成团</span>' : '<span class="bad">流团</span>') + "</p>";
+      }).join("") + "</div></div>";
+    return html;
+  }
+
+  // 流团退款清单块（App 不自动退，只出清单；文档 §五 / §一）
+  function blockRefund(d, j) {
+    if (!j || !j.refundable.length) return "";
+    var rl = d.refundList;
+    return '<div class="block"><h2>流团退款清单</h2>' +
+      '<p class="hint">App 不收款也不自动退款，这里只生成清单。真实退款请在平台操作。</p>' +
+      (rl
+        ? '<div class="price">' + money(rl.total) + "<small> / 应退定金</small></div>" +
+          '<div class="kv"><span>涉及订单</span><span>' + rl.count + " 单</span></div>" +
+          '<div class="scroll-x"><table><thead><tr><th>匿名ID</th><th>颜色</th><th>金额</th></tr></thead><tbody>' +
+          rl.rows.map(function (r) {
+            return "<tr><td>" + esc(r.anonId) + "</td><td>" + esc(r.color) + '</td><td class="num">' + money(r.amount) + "</td></tr>";
+          }).join("") + "</tbody></table></div>"
+        : '<p class="hint">有 ' + j.refundable.length + " 单需要退定金。</p>") +
+      '<button type="button" class="btn wide" data-act="build-refund">' +
+      (rl ? "重新生成清单" : "生成退款清单（" + j.refundable.length + " 单）") + "</button>" +
+      (rl ? '<button type="button" class="btn bad wide" data-act="mark-refunded">标记为已退款（订单转已退款）</button>' : "") +
+      "</div>";
+  }
+
+  // 款状态块
+  function blockDesignState(d, j) {
+    if (!j) return "";
+    return '<div class="block"><h2>款状态</h2>' +
+      '<div class="kv"><span>当前</span><span>' + esc(d.designState || "预售中") + "</span></div>" +
+      '<div class="kv"><span>判定后应为</span><span class="gold">' + esc(j.designState) + "</span></div>" +
+      (d.designState === j.designState
+        ? '<p class="hint">已同步。</p>'
+        : '<button type="button" class="btn primary wide" data-act="apply-design-state">把款状态改为「' + esc(j.designState) + '」</button>') +
+      "</div>";
+  }
+
   function vFinal(d) {
     var f = d.finance;
     var colors = R.colors(d.words ? d.words.color : []);
@@ -258,55 +314,11 @@
         '<div class="kv"><span>件数</span><span>' + sumQty + " 件</span></div></div>";
     }
 
-    // —— 成团判定（文档 §四 分色成团 / §五 流团）——
-    var due = OM().isDue(pre.deadline);
+    // —— 成团判定 / 退款清单 / 款状态（拆成独立块函数，见下方 blockJudge/blockRefund/blockDesignState）——
     var j = d.judge;
-    body += '<div class="block"><h2>成团判定</h2>' +
-      '<p class="hint">本款<b>分色成团</b>：未达线颜色将流团，并退还该色定金。' +
-      (pre.deadline ? "<br>成团截止：" + esc(pre.deadline) + (due ? "（已到期）" : "（未到期，可提前判）") : "<br>未设截止日期，可提前判。") +
-      "</p>" +
-      '<button type="button" class="btn primary wide" data-act="judge-pre">' +
-      (j ? "重新判定" : "判定成团") + "</button></div>";
-
-    if (j) {
-      var label = j.designState === "已成团" ? (j.partial ? "部分成团" : "全部成团") : "已流团";
-      body += '<div class="block"><h2>判定结果 · ' + esc(label) + "</h2>" +
-        (j.partial ? '<p class="warn-note">够线的颜色正常做；不够线的颜色单独流团，退还该色定金。</p>' : "") +
-        '<div class="stack">' + j.rows.map(function (r) {
-          return '<div class="hr"></div><strong>' + esc(r.color) + " · 第 " + r.batchNo + " 团</strong>" +
-            '<p class="hint">' + r.got + " / " + r.target + " 件（" + Math.round(r.rate * 100) + "%） → " +
-            (r.enough ? '<span class="gold">成团</span>' : '<span class="bad">流团</span>') + "</p>";
-        }).join("") + "</div></div>";
-    }
-
-    // —— 流团退款清单（App 不自动退，只出清单；文档 §五 / §一）——
-    if (j && j.refundable.length) {
-      var rl = d.refundList;
-      body += '<div class="block"><h2>流团退款清单</h2>' +
-        '<p class="hint">App 不收款也不自动退款，这里只生成清单。真实退款请在平台操作。</p>' +
-        (rl
-          ? '<div class="price">' + money(rl.total) + "<small> / 应退定金</small></div>" +
-            '<div class="kv"><span>涉及订单</span><span>' + rl.count + " 单</span></div>" +
-            '<div class="scroll-x"><table><thead><tr><th>匿名ID</th><th>颜色</th><th>金额</th></tr></thead><tbody>' +
-            rl.rows.map(function (r) {
-              return "<tr><td>" + esc(r.anonId) + "</td><td>" + esc(r.color) + '</td><td class="num">' + money(r.amount) + "</td></tr>";
-            }).join("") + "</tbody></table></div>"
-          : '<p class="hint">有 ' + j.refundable.length + " 单需要退定金。</p>") +
-        '<button type="button" class="btn wide" data-act="build-refund">' +
-        (rl ? "重新生成清单" : "生成退款清单（" + j.refundable.length + " 单）") + "</button>" +
-        (rl ? '<button type="button" class="btn bad wide" data-act="mark-refunded">标记为已退款（订单转已退款）</button>' : "") +
-        "</div>";
-    }
-
-    if (j) {
-      body += '<div class="block"><h2>款状态</h2>' +
-        '<div class="kv"><span>当前</span><span>' + esc(d.designState || "预售中") + "</span></div>" +
-        '<div class="kv"><span>判定后应为</span><span class="gold">' + esc(j.designState) + "</span></div>" +
-        (d.designState === j.designState
-          ? '<p class="hint">已同步。</p>'
-          : '<button type="button" class="btn primary wide" data-act="apply-design-state">把款状态改为「' + esc(j.designState) + '」</button>') +
-        "</div>";
-    }
+    body += blockJudge(pre, j);
+    body += blockRefund(d, j);
+    body += blockDesignState(d, j);
 
     // —— 履约：大货 / 补尾款 / 发货 / 售后（批 E3 + 批 E4，拆到 render-flux.js）——
     if (global.RenderFlux && d.pre) {

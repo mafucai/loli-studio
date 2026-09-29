@@ -17,10 +17,8 @@
   var ACT = null, H = null;   // 由 register 注入
   var MODELS = { text: [], image: [] };
 
-  function esc2(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
+  // 统一用 R.esc（render.js 定义，加载序在本文件之前）——避免三份 esc 实现漂移（R3）
+  function esc2(s) { return global.R.esc(s); }
   function kindOf(el) { return (el && el.getAttribute("data-kind")) === "image" ? "image" : "text"; }
 
   // —— 刷新单个池的界面 ——

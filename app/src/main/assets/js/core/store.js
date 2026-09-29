@@ -12,7 +12,12 @@
   }
   function write(k, v) {
     try { localStorage.setItem(k, JSON.stringify(v)); }
-    catch (e) { /* 满或私隐模式：静默 */ }
+    catch (e) {
+      // 不能静默（RISK_CHECKLIST「失败必须有明确提示」）：写不进去会丢数据，必须让用户看见
+      var msg = "本地存储写入失败（空间不足或隐私模式），本次数据可能未保存：" + k;
+      try { if (typeof global.__errAdd === "function") global.__errAdd(msg, "js"); } catch (_) {}
+      try { if (global.Actions && global.Actions.toast) global.Actions.toast(msg); } catch (_) {}
+    }
   }
 
   // —— 接口配置（两个池：文本 / 图片，各自多套地址密钥）——

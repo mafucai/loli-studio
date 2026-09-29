@@ -249,8 +249,9 @@
   }
 
   // 催款清单（§五：标记逾期 → 出清单，不自动发）
-  function buildTailDunning(orders, ids) {
-    var set = ids || tailOverdue(orders, arguments[2]);
+  // 第三参显式声明 deadline（原先隐式取参，可读性差且易错）
+  function buildTailDunning(orders, ids, deadline) {
+    var set = ids || tailOverdue(orders, deadline);
     var rows = (orders || []).filter(function (o) { return set.indexOf(o.anonId) >= 0; });
     return {
       rows: rows.map(function (o) {

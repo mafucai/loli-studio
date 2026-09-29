@@ -147,9 +147,8 @@
     if (foot) foot.textContent = "收到错误会立刻显示在此，并写入 logcat（LoliStudio / LoliStudio-JS）。";
   }
 
-  function esc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  // 统一用 R.esc（render.js 定义，加载序在本文件之前）——避免多份 esc 实现漂移（R3）
+  function esc(s) { return global.R.esc(s); }
 
   // 统一入口：页面侧、原生桥都走这里，避免重复上报
   function errAdd(text, src) {
