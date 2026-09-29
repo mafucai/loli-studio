@@ -178,7 +178,7 @@
       var w = d.words || {};
       var q = where === "fact"
         ? [w.style, w.mainFabric, "洛丽塔 代工厂 产业带"].filter(Boolean).join(" ")
-        : ["洛丽塔", w.style, w.color, w.mainFabric, "相似款 原创"].filter(Boolean).join(" ");
+        : ["洛丽塔", w.style].concat(Factory.toColors(w.color)).concat([w.mainFabric, "相似款 原创"]).filter(Boolean).join(" ");
 
       H.toast("正在让 AI 搜索…");
       var reply = await AI.searchWeb(q);

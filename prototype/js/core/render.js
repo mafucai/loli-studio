@@ -5,7 +5,7 @@
   "use strict";
 
   var PAGES = [
-    { id: "design", title: "设计", head: "word",  steps: ["word", "img", "part"] },
+    { id: "design", title: "设计", head: "plan",  steps: ["plan", "word", "img", "part"] },
     { id: "make",   title: "制作", head: "check", steps: ["check", "buy", "look"] },
     { id: "run",    title: "经营", head: "model", steps: ["model", "fact", "cost"] }
   ];
@@ -22,6 +22,14 @@
   function stepName(id) {
     var list = global.Router && Router.STEPS;
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i].title;
+    return "";
+  }
+  // 步骤标签（从 Router.STEPS 动态取，避免写死「第 N 步，共 M 步」）
+  function stepLabel(id) {
+    var list = (global.Router && Router.STEPS) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) return "第 " + list[i].n + " 步 / 共 " + list.length + " 步";
+    }
     return "";
   }
   function pageOf(id) {
@@ -43,7 +51,7 @@
     var page = pageOf(curId);
     var at = page.steps.indexOf(curId);
     var out = "";
-    for (var i = 0; i < 3; i++) out += '<b class="' + (i === at ? "on" : "") + '"></b>';
+    for (var i = 0; i < page.steps.length; i++) out += '<b class="' + (i === at ? "on" : "") + '"></b>';
     return '<div class="dots">' + out + "</div>";
   }
 
@@ -53,11 +61,10 @@
       '<p class="sub">' + sub + "</p>" + body + pageBar(curId) + "</div>";
   }
 
-    var ORDER = Router.STEPS.map(function (x) { return x.id; });
     function pageBar(curId) {
-      var i = ORDER.indexOf(curId);
-      var back = i > 0
-        ? '<button type="button" class="btn" data-act="goto" data-step="' + ORDER[i - 1] + '">返回</button>'
+      var prev = Router.prevId(curId);
+      var back = prev
+        ? '<button type="button" class="btn" data-act="goto" data-step="' + prev + '">返回</button>'
         : '<button type="button" class="btn" data-act="history">历史</button>';
       return '<div class="actions">' + back +
         '<button type="button" class="btn" data-act="keep">保存</button>' +
@@ -77,27 +84,41 @@
   /* 1 设计词 */
   function vWord(d) {
     var w = d.words;
-    var body = '<div class="block">' + menu("word", "设计词", "生成款式、颜色和面料") +
-      menu("img", "出图", "看一眼，满意再往下") + menu("part", "拆件", "拆成物料和工序") + "</div>";
-
+    var avoid = (d.avoid || []);
+    var body = "";
+    if (avoid.length) {
+      body += '<div class="block"><h2>避开</h2><p class="hint">下面这些不会出现在设计里。</p>' +
+        avoid.map(function (x) { return '<span class="tag bad-tag">' + esc(x) + "</span>"; }).join("") + "</div>";
+    }
     body += '<div class="block"><h2>填写需求</h2>' +
       '<textarea id="in-prompt" placeholder="例：雾霾蓝英式下午茶，春夏薄款，蝴蝶结收腰">' +
       esc(d.prompt || "") + "</textarea>" +
-      '<button type="button" class="btn primary wide" data-act="gen-words">生成设计词</button></div>';
+      '<label for="in-avoid">不想出现的内容（避免词）</label>' +
+      '<input id="in-avoid" placeholder="例：蕾丝、亮片、长袖（逗号分隔）" value="' + esc(avoid.join("、")) + '">' +
+      '<button type="button" class="btn small wide" data-act="save-avoid">保存避免词</button>' +
+      '<p class="hint">保存后会真的传给文本 AI，让它避开这些元素。</p>' +
+      '<button type="button" class="btn primary wide" data-act="gen-words" style="margin-top:14px">生成设计词</button></div>';
 
     if (w) {
       body += '<div class="block"><h2>结果</h2>' +
         '<div class="kv"><span>风格</span><span>' + esc(w.style) + "</span></div>" +
         '<div class="kv"><span>季节</span><span>' + esc(w.season) + "</span></div>" +
         '<div class="kv"><span>主面料</span><span>' + esc(w.mainFabric) + "</span></div>" +
-        '<div class="kv"><span>主色</span><span>' + esc(w.color) + "</span></div>" +
+        '<div class="kv"><span>主色</span><span>' + esc(colors(w.color).join("、")) + "</span></div>" +
         '<div style="margin-top:12px">' +
         w.details.map(function (x) { return '<span class="tag">' + esc(x) + "</span>"; }).join("") +
         w.decors.map(function (x) { return '<span class="tag plain">' + esc(x) + "</span>"; }).join("") +
         "</div>" + (w.mood ? '<p class="note">' + esc(w.mood) + "</p>" : "") + "</div>";
       body += nextBtn("img", "下一步 · 出图");
     }
-    return screen("word", "设计", "第 1 步，共 9 步", body);
+    return screen("word", "设计", stepLabel("word"), body);
+  }
+
+  // 颜色兼容：单值 → 数组（老设计单不迁移）
+  function colors(c) {
+    if (Array.isArray(c)) return c;
+    var s = String(c == null ? "" : c).trim();
+    return s ? [s] : [];
   }
 
   /* 2 出图 */
@@ -115,8 +136,8 @@
         '<button type="button" class="btn ok" data-act="pass-img">通过</button></div>' +
         '<button type="button" class="btn wide small" data-act="gen-img">再生成一张</button></div>';
     }
-    if (d.imgPassed) body += nextBtn("part", "下一步 · 拆件");
-    return screen("img", "出图", d.imgPassed ? "已通过，可以去拆件" : "第 2 步，共 9 步", body);
+    if (d.imgPassed) body += nextBtn("vote", "下一步 · 图透");
+    return screen("img", "出图", d.imgPassed ? "已通过，去做图透" : stepLabel("img"), body);
   }
 
   /* 3 拆件 */
@@ -150,7 +171,7 @@
         '<div class="kv"><span>样衣单件成本</span><span>' + money(b.total) + "</span></div>" +
         nextBtn("check", "下一步 · 查重") + "</div>";
     }
-    return screen("part", "拆件", "第 3 步，共 9 步", body);
+    return screen("part", "拆件", stepLabel("part"), body);
   }
 
   /* 4 查重 */
@@ -176,7 +197,7 @@
       else if (done) body += '<div class="block"><h2>不能标原创</h2><p class="hint">至少有一个平台选择了雷同。</p><button type="button" class="btn bad wide" data-act="reject-original">回设计词改款</button></div>';
       else body += '<div class="block"><p class="hint">五个平台都选择后才能判断。</p></div>';
     }
-    return screen("check", "查重", "第 4 步，共 9 步", body);
+    return screen("check", "查重", stepLabel("check"), body);
   }
 
   /* 5 采购 */
@@ -207,7 +228,7 @@
         "</div>";
       body += '<div class="block"><h2>采购合计</h2><div class="price">' + (complete ? money(total) : "待填写") + '</div><p class="hint">只统计你填写的真实价格。</p>' + (complete ? nextBtn("look", "下一步 · 组合") : "") + "</div>";
     }
-    return screen("buy", "采购", "第 5 步，共 9 步", body);
+    return screen("buy", "采购", stepLabel("buy"), body);
   }
 
   /* 6 组合 */
@@ -237,7 +258,7 @@
       body += R.estimateBlock(d);
       body += nextBtn("model", "下一步 · 模特");
     }
-    return screen("look", "组合", "第 6 步，共 9 步", body);
+    return screen("look", "组合", stepLabel("look"), body);
   }
 
   /* 7 模特 */
@@ -257,7 +278,7 @@
         "</div><p class=\"note\">" + esc(m.note) + "</p></div>" +
         nextBtn("fact", "下一步 · 工厂");
     }
-    return screen("model", "模特", "第 7 步，共 9 步", body);
+    return screen("model", "模特", stepLabel("model"), body);
   }
 
   /* 8 工厂 */
@@ -281,7 +302,7 @@
       }).join("") : '<p class="hint">还没有记录。</p>') + "</div>";
       if (d.pickedFactory) body += nextBtn("cost", "下一步 · 成本");
     }
-    return screen("fact", "工厂", "第 8 步，共 9 步", body);
+    return screen("fact", "工厂", stepLabel("fact"), body);
   }
 
   /* 9 成本 */
@@ -301,11 +322,11 @@
       '</div>' +
       '<button type="button" class="btn primary wide" data-act="run-finance" style="margin-top:14px">计算</button></div>';
     if (f && !f.error) body += '<div class="block"><h2>结果</h2><div class="price">' + money(f.profit) + '<small> / 件利润</small></div><div class="hr"></div><div class="kv"><span>收入</span><span>' + money(f.income) + '</span></div><div class="kv"><span>生产成本</span><span class="bad">-' + money(f.cost * f.qty) + '</span></div><div class="kv"><span>平台佣金</span><span class="bad">-' + money(f.fee * f.qty) + '</span></div><div class="kv"><span>快递包装</span><span class="bad">-' + money((f.shipping + f.pack) * f.qty) + '</span></div><div class="kv"><span>总利润</span><span>' + money(f.totalProfit) + '</span></div><div class="kv"><span>利润率</span><span>' + f.margin.toFixed(1) + '%</span></div></div>';
-    return screen("cost", "成本", "第 9 步，共 9 步", body);
+    return screen("cost", "成本", stepLabel("cost"), body);
   }
 
   global.R = {
-    esc: esc, money: money, tabbar: tabbar,
+    esc: esc, money: money, tabbar: tabbar, colors: colors, screen: screen,
     vWord: vWord, vImg: vImg, vPart: vPart, vCheck: vCheck, vBuy: vBuy,
     vLook: vLook, vModel: vModel, vFact: vFact, vCost: vCost
   };

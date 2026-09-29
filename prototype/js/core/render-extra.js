@@ -9,6 +9,54 @@
   var R = global.R || (global.R = {});
   function esc(s) { return R.esc(s); }
   function money(n) { return R.money(n); }
+  // screen 由 render.js 提供（render.js 先加载），必须走 R.screen 而不是裸引用
+  function screen(curId, title, sub, body) { return R.screen(curId, title, sub, body); }
+
+  /* 0 企划：主题风格 + 柄图（文档【第二层】第 0 步，必须在设计词之前） */
+  function vPlan(d) {
+    var theme = d.theme || "";
+    var prints = d.prints;
+    var body = '<div class="block"><h2>主题风格</h2>' +
+      '<p class="hint">先定主题，柄图和设计词都会跟着走。</p>' +
+      '<div class="chips">' + Factory.THEMES.map(function (t) {
+        return '<button type="button" class="chip' + (t === theme ? " on" : "") +
+          '" data-act="pick-theme" data-value="' + esc(t) + '">' + esc(t) + "</button>";
+      }).join("") + "</div>" +
+      '<button type="button" class="btn wide" data-act="gen-prints"' +
+      (theme ? "" : " disabled") + ">" +
+      (prints && prints.picks && prints.picks.length ? "重新生成柄图候选" : "生成柄图候选") + "</button></div>";
+
+    if (!theme) {
+      body += '<div class="block"><h2>柄图</h2><p class="hint">先选一个主题风格。</p></div>';
+      return screen("plan", "企划", "第 0 步 · 在设计词之前", body);
+    }
+
+    if (!prints) {
+      body += '<div class="block"><h2>柄图</h2><p class="hint">柄图是出图的输入，必须先定。</p></div>';
+      return screen("plan", "企划", "第 0 步 · 在设计词之前", body);
+    }
+
+    var picks = prints.picks || [];
+    var src = prints.mode === "ai" ? "图片接口生成" : "本地演示花色（未配图片接口）";
+    body += '<div class="block"><h2>柄图（选一张）</h2>' +
+      '<p class="hint">来源：' + esc(src) + '。柄图是印花图案本身，不是服装造型图。</p>' +
+      '<div class="print-grid">' + prints.items.map(function (item) {
+        var on = picks.indexOf(item.id) >= 0;
+        return '<button type="button" class="print' + (on ? " on" : "") +
+          '" data-act="pick-print" data-value="' + esc(item.id) + '">' +
+          '<img src="' + esc(item.uri) + '" alt="' + esc(item.name) + '">' +
+          '<span>' + esc(item.name) + "</span></button>";
+      }).join("") + "</div>" +
+      (prints.error ? '<p class="warn-note">图片接口没成功：' + esc(prints.error) + "。已用本地演示花色。</p>" : "") +
+      "</div>";
+
+    if (picks.length) {
+      body += '<div class="block"><h2>已选柄图</h2>' + nextBtn("word", "下一步 · 设计词") + "</div>";
+    } else {
+      body += '<div class="block"><p class="hint">选一张柄图，才能进设计词。</p></div>';
+    }
+    return screen("plan", "企划", "第 0 步 · 在设计词之前", body);
+  }
 
   function stepName(id) {
     var steps = (global.Router && Router.STEPS) || [];
@@ -119,8 +167,86 @@
     }).join("");
   }
 
+  /* ===== 图透（文档第 4、5 项）===== */
+  // 多版本对比 + 投票 + 改版留痕（versions 只增不删）
+  function vVote(d) {
+    var versions = d.versions || [];
+    var cur = versions[d.currentVersion || 0] || null;
+    var votes = d.votes || [];
+    var body = "";
+
+    if (!versions.length) {
+      body += '<div class="block"><h2>图透</h2>' +
+        '<p class="hint">先把第 2 步的候选图设为第 1 版，才能开始图透。</p>' +
+        '<button type="button" class="btn primary wide" data-act="start-version">把当前图设为第 1 版</button></div>';
+      return screen("vote", "图透", "第 3 步 · 多版本对比与意见", body);
+    }
+
+    body += '<div class="block"><h2>当前 · 第 ' + cur.n + " 版</h2>" +
+      '<img class="card-img tall" src="' + esc(cur.uri) + '" alt="第 ' + cur.n + ' 版">' +
+      '<p class="hint">来源：' + esc(cur.source === "ai" ? "图片接口生成" : "演示图") +
+      " · " + esc(String(cur.at).slice(0, 16).replace("T", " ")) + "</p>" +
+      (cur.reason ? '<p class="hint">改版原因：' + esc(cur.reason) + "</p>" : "") +
+      (cur.note ? '<p class="note">' + esc(cur.note) + "</p>" : "") + "</div>";
+
+    if (versions.length > 1) {
+      body += '<div class="block"><h2>全部版本（' + versions.length + '）</h2>' +
+        '<p class="hint">旧版本永不删除，这就是改版留痕。点缩略图切换对比。</p>' +
+        '<div class="ver-grid">' + versions.map(function (v, i) {
+          var on = i === (d.currentVersion || 0);
+          return '<button type="button" class="ver' + (on ? " on" : "") +
+            '" data-act="switch-version" data-index="' + i + '">' +
+            '<img src="' + esc(v.uri) + '" alt="第 ' + v.n + ' 版">' +
+            '<span>第 ' + v.n + " 版</span>" +
+            "<em>" + esc(String(v.at).slice(5, 10)) + "</em></button>";
+        }).join("") + "</div></div>";
+    }
+
+    var curVotes = votes.filter(function (v) { return v.versionNo === cur.n; });
+    body += '<div class="block"><h2>这一版怎么评</h2>' +
+      '<div class="chips">' + Factory.VOTE_CHOICES.map(function (c) {
+        var on = curVotes.some(function (v) { return v.choice === c; });
+        return '<button type="button" class="chip' + (on ? " on" : "") +
+          '" data-act="vote" data-value="' + esc(c) + '">' + esc(c) + "</button>";
+      }).join("") + "</div>" +
+      '<label for="in-vnote">意见 / 需要改哪里</label>' +
+      '<input id="in-vnote" placeholder="例：裙摆太长，腰线再高一点" value="' + esc(d.voteNote || "") + '">' +
+      '<button type="button" class="btn wide" data-act="save-vote">记录这一票</button></div>';
+
+    if (curVotes.length) {
+      body += '<div class="block"><h2>已记录</h2>' + curVotes.map(function (v) {
+        return '<div class="hr"></div><strong>' + esc(v.choice) + "</strong>" +
+          '<p class="hint">' + esc(String(v.at).slice(0, 16).replace("T", " ")) + "</p>" +
+          (v.note ? '<p class="note">' + esc(v.note) + "</p>" : "");
+      }).join("") + "</div>";
+    }
+
+    var revised = versions.filter(function (v) { return v.n > 1; });
+    if (revised.length) {
+      body += '<div class="block"><h2>改版记录</h2>' + revised.map(function (v) {
+        return '<div class="hr"></div><strong>第 ' + v.n + " 版</strong>" +
+          '<p class="hint">' + esc(v.reason || "未填原因") + " · " +
+          esc(String(v.at).slice(0, 16).replace("T", " ")) + "</p>";
+      }).join("") + "</div>";
+    }
+
+    body += '<div class="block"><h2>改版重开</h2>' +
+      '<p class="hint">改版必须填原因，否则留痕没有意义。改版新增一版，旧版保留。</p>' +
+      '<label for="in-reason">改版原因</label>' +
+      '<div class="chips">' + Factory.REVISE_REASONS.map(function (r) {
+        return '<button type="button" class="chip" data-act="pick-reason" data-value="' + esc(r) + '">' + esc(r) + "</button>";
+      }).join("") + "</div>" +
+      '<input id="in-reason" placeholder="点上面一项，或自己写" value="' + esc(d.reviseReason || "") + '">' +
+      '<button type="button" class="btn primary wide" data-act="revise-img">改版重开（生成新版）</button></div>';
+
+    body += '<div class="block">' + nextBtn("part", "下一步 · 拆件") + "</div>";
+    return screen("vote", "图透", "第 3 步 · 多版本对比与意见", body);
+  }
+
   var _origHistory = R.vHistory;
   R.vHistory = vHistory;
+  R.vPlan = vPlan;
+  R.vVote = vVote;
   R.aiResults = aiResults;
   R.estimateBlock = estimateBlock;
   R.epListHTML = epListHTML;

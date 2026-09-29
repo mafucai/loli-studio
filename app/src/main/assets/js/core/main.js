@@ -6,8 +6,10 @@
   "use strict";
 
   // 页面视图注册（追加，不覆盖）
+  Router.registerPage("plan",    R.vPlan);
   Router.registerPage("word",    R.vWord);
   Router.registerPage("img",     R.vImg);
+  Router.registerPage("vote",    R.vVote);
   Router.registerPage("part",    R.vPart);
   Router.registerPage("check",   R.vCheck);
   Router.registerPage("buy",     R.vBuy);
@@ -18,7 +20,7 @@
   Router.registerPage("history", R.vHistory);
 
   // 全局状态
-  global.ST = global.ST || { step: "word" };
+  global.ST = global.ST || { step: "plan" };
   global.ST_VIEW = null;
 
   function ensureDesign() {

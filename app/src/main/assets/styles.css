@@ -96,6 +96,32 @@ label{display:block;margin:16px 0 8px;color:var(--ink-2);font-size:12px}
 .tag.warn{background:rgba(224,162,74,.14);color:var(--warn)}
 .tag.bad{background:rgba(217,107,107,.14);color:var(--bad)}
 .tag.plain{background:rgba(236,228,211,.07);color:var(--ink-2)}
+
+/* 企划：主题芯片 / 柄图候选 / 避免词标签 */
+.tag.bad-tag{background:rgba(217,107,107,.14);color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+.chip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);
+  background:rgba(236,228,211,.05);color:var(--ink-2);font-size:14px;cursor:pointer}
+.chip.on{background:rgba(217,178,106,.16);border-color:var(--gold);color:var(--gold)}
+.print-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px}
+.print{padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  background:rgba(236,228,211,.04);cursor:pointer;display:block;width:100%}
+.print img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover}
+.print span{display:block;padding:6px 4px;font-size:12px;color:var(--ink-2);text-align:center}
+.print.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.print.on span{color:var(--gold)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* 图透：多版本对比缩略图 */
+.ver-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px}
+.ver{padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  background:rgba(236,228,211,.04);cursor:pointer;display:block;width:100%}
+.ver img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover}
+.ver span{display:block;padding:5px 4px 0;font-size:12px;color:var(--ink-2);text-align:center}
+.ver em{display:block;padding:0 4px 6px;font-size:10.5px;font-style:normal;
+  color:var(--ink-3);text-align:center}
+.ver.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.ver.on span{color:var(--gold)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--ink-3);font-size:11px;font-weight:400;letter-spacing:.06em}
@@ -138,7 +164,7 @@ strong{color:var(--gold);font-weight:600}
   padding:20px 16px calc(var(--safe-b) + 20px);
   max-height:88vh;max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;
   overscroll-behavior:contain}
-.toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + var(--bar) + 16px);z-index:50;
+.toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + var(--bar) + 60px);z-index:50;
   max-width:86vw;padding:10px 16px;border-radius:10px;background:var(--gold);color:#1a1611;
   font-size:13px;text-align:center;opacity:0;transform:translateX(-50%);transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}

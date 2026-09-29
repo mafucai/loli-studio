@@ -41,26 +41,71 @@
 
   var ACT = {};
 
+  // —— 0 企划：主题 / 柄图 ——
+  ACT["pick-theme"] = function (el) {
+    var value = el.getAttribute("data-value");
+    if (Factory.THEMES.indexOf(value) < 0) { report("主题无效"); return; }
+    var d = cur();
+    // 换主题后旧柄图作废，必须重选（柄图跟着主题走）
+    patch("选主题", { theme: value, prints: null });
+  };
+  ACT["gen-prints"] = function () {
+    var d = cur();
+    if (!d || !d.theme) { toast("先选主题风格"); return; }
+    var items = Factory.printCandidates(d.theme, d.theme + Date.now());
+    patch("生成柄图候选", { prints: { theme: d.theme, items: items, picks: [], mode: "demo", at: new Date().toISOString() } });
+  };
+  ACT["pick-print"] = function (el) {
+    var d = cur();
+    if (!d || !d.prints) { report("先生成柄图候选"); return; }
+    var value = el.getAttribute("data-value");
+    var exists = (d.prints.items || []).some(function (x) { return x.id === value; });
+    if (!exists) { report("柄图候选不存在"); return; }
+    var prints = JSON.parse(JSON.stringify(d.prints));
+    prints.picks = prints.picks[0] === value ? [] : [value];   // 单选；再点一次取消
+    patch("选柄图", { prints: prints });
+  };
+  ACT["save-avoid"] = function () {
+    var d = cur();
+    if (!d) { toast("请先从历史里选一条或新建"); return; }
+    var input = document.getElementById("in-avoid");
+    if (!input) return;
+    var list = String(input.value || "").split(/[,，、\s]+/)
+      .map(function (x) { return x.trim(); })
+      .filter(function (x) { return x; })
+      .slice(0, 20);
+    patch("保存避免词", { avoid: list });
+    toast(list.length ? "已保存 " + list.length + " 个避免词" : "已清空避免词");
+  };
+
     ACT["gen-words"] = async function () {
       var ta = document.getElementById("in-prompt");
       var prompt = ta ? ta.value.trim() : "";
-      if (!prompt) { toast("先写一句设计需求"); return; }
+      var d0 = cur();
+      var hasPrint = !!(d0 && d0.prints && d0.prints.picks && d0.prints.picks.length);
+      var hasTheme = !!(d0 && d0.theme);
+      if (!prompt && !hasPrint && !hasTheme) { toast("先写一句设计需求，或先做企划"); return; }
       var d = cur();
       if (!d) { toast("请先从历史里选一条或新建"); return; }
       Store.setCurrentId(d.id);
+      var theme = d.theme || "";
+      var printText = Factory.printDesc({ theme: theme, picks: (d.prints && d.prints.picks) || [] });
+      var avoid = d.avoid || [];
+      var built = AI.buildWordPrompt({ theme: theme, prints: printText, avoid: avoid, prompt: prompt });
+      var promptForFactory = [theme, printText, prompt].filter(Boolean).join(" ") || prompt;
       if (AI.mode() !== "real") {
-        patch("演示设计词", { prompt: prompt, words: Factory.designWords(prompt), wordsSource: "demo" });
+        patch("演示设计词", { prompt: prompt, words: Factory.designWords(promptForFactory), wordsSource: "demo" });
         toast("演示模式：本地生成");
         return;
       }
       toast("正在调用文本接口");
-      var reply = await AI.chat(prompt, { system: "你是洛丽塔服装设计助手。只返回 JSON，不要 Markdown。字段：style、season、mainFabric、color、details、decors、sizes、mood。三个数组字段必须是字符串数组。" });
+      var reply = await AI.chat(built.user, { system: built.system });
       if (reply && reply.__error) { report(reply.__error); return; }
       var parsed;
       try { parsed = JSON.parse(String(reply).replace(/^```json\s*|```$/g, "").trim()); }
       catch (e) { report("接口返回不是有效 JSON：" + reply); return; }
-      var words = { prompt: prompt, style: String(parsed.style || ""), season: String(parsed.season || ""), mainFabric: String(parsed.mainFabric || ""), color: String(parsed.color || ""), details: Array.isArray(parsed.details) ? parsed.details.map(String) : [], decors: Array.isArray(parsed.decors) ? parsed.decors.map(String) : [], sizes: Array.isArray(parsed.sizes) ? parsed.sizes.map(String) : [], mood: String(parsed.mood || "") };
-      if (!words.style || !words.color || !words.mainFabric || !words.details.length) { report("接口结果缺少必要字段"); return; }
+      var words = { prompt: prompt, style: String(parsed.style || ""), season: String(parsed.season || ""), mainFabric: String(parsed.mainFabric || ""), color: Factory.toColors(parsed.color), details: Array.isArray(parsed.details) ? parsed.details.map(String) : [], decors: Array.isArray(parsed.decors) ? parsed.decors.map(String) : [], sizes: Array.isArray(parsed.sizes) ? parsed.sizes.map(String) : [], mood: String(parsed.mood || "") };
+      if (!words.style || !words.color.length || !words.mainFabric || !words.details.length) { report("接口结果缺少必要字段"); return; }
       patch("真实设计词", { prompt: prompt, words: words, wordsSource: "ai" });
       toast("文本接口生成完成");
     };
@@ -92,11 +137,12 @@
       global.__imgProgress = null;
     }
   }
-  ACT["gen-img"] = function () { var d=cur(); if(!d||!d.words){ toast("先生成设计词"); return; } var w=d.words; makeImage("dress","洛丽塔服装平铺图，"+w.color+"，"+w.style+"，"+w.mainFabric+"，细节："+w.details.join("、"), function(uri,source){ patch("生成图",{imgUri:uri,imgPassed:false,imgSource:source}); }); };
+  ACT["gen-img"] = function () { var d=cur(); if(!d||!d.words){ toast("先生成设计词"); return; } var w=d.words; makeImage("dress","洛丽塔服装平铺图，"+Factory.toColors(w.color).join("、")+"，"+w.style+"，"+w.mainFabric+"，细节："+(w.details||[]).join("、"), function(uri,source){ patch("生成图",{imgUri:uri,imgPassed:false,imgSource:source}); }); };
 
 
-  ACT["pass-img"] = function () { patch("通过图", { imgPassed: true }); toast("已通过，去拆件"); };
+  ACT["pass-img"] = function () { patch("通过图", { imgPassed: true }); toast("已通过，去图透"); };
   ACT["reject-img"] = function () { patch("驳回图", { imgUri: null, imgPassed: false }); };
+
 
   ACT["gen-bom"] = async function () {
     var d = cur();
@@ -191,10 +237,10 @@
       patch("记录真实单价", { sourcing: sourcing });
     };
 
-  ACT["gen-combo"] = function () { var d=cur(); if(!d||!d.sourcing||!d.words){ toast("先完成采购"); return; } var w=d.words; makeImage("combo","洛丽塔服装组合平铺图，展示"+w.color+w.style+"主裙、裙撑、蝴蝶结和蕾丝", function(uri,source){ patch("合成组合",{combo:{uri:uri,note:source==="ai"?"图片接口生成":"演示图",source:source}}); }); };
+  ACT["gen-combo"] = function () { var d=cur(); if(!d||!d.sourcing||!d.words){ toast("先完成采购"); return; } var w=d.words; makeImage("combo","洛丽塔服装组合平铺图，展示"+Factory.toColors(w.color).join("、")+w.style+"主裙、裙撑、蝴蝶结和蕾丝", function(uri,source){ patch("合成组合",{combo:{uri:uri,note:source==="ai"?"图片接口生成":"演示图",source:source}}); }); };
 
 
-  ACT["gen-model"] = function () { var d=cur(); if(!d||!d.combo||!d.words){ toast("先完成组合"); return; } var w=d.words; makeImage("model","模特穿着"+w.color+w.style+"洛丽塔裙，正面全身，服装细节清晰", function(uri,source){ patch("生成模特",{model:{uri:uri,note:source==="ai"?"图片接口生成":"演示图",source:source}}); }); };
+  ACT["gen-model"] = function () { var d=cur(); if(!d||!d.combo||!d.words){ toast("先完成组合"); return; } var w=d.words; makeImage("model","模特穿着"+Factory.toColors(w.color).join("、")+w.style+"洛丽塔裙，正面全身，服装细节清晰", function(uri,source){ patch("生成模特",{model:{uri:uri,note:source==="ai"?"图片接口生成":"演示图",source:source}}); }); };
 
 
     ACT["run-factories"] = function () {
@@ -253,7 +299,7 @@
     var d = Store.newDesign("");
     Store.saveDesign(d);
     Store.setCurrentId(d.id);
-    Router.goto("word");
+    Router.goto("plan");
     global.__render && __render();
     toast("已新建设计单");
   };
@@ -294,7 +340,7 @@
     if (!confirm("删除当前设计单？此操作不可恢复。")) return;
     Store.deleteDesign(id);
     Store.setCurrentId("");
-    Router.goto("word");
+    Router.goto("plan");
     global.__render && __render();
     toast("已删除");
   };
@@ -324,7 +370,18 @@
     global.Settings.register(ACT, { toast: toast, report: report, patch: patch, cur: cur });
   }
 
-  global.Actions = { bind: bind, toast: toast, report: report, run: run };
+  // 图透动作（actions.js 已到 400 行上限附近，拆到 vote-actions.js）
+  if (global.Actions && global.Actions.registerVote) {
+    global.Actions.registerVote(ACT, {
+      patch: patch, cur: cur, report: report, toast: toast, makeImage: makeImage
+    });
+  }
+
+  global.Actions = global.Actions || {};
+  global.Actions.bind = bind;
+  global.Actions.toast = toast;
+  global.Actions.report = report;
+  global.Actions.run = run;
   // 供外部把 data-act 字符串直接分发给动作层，用于程序化触发
   function run(actName, el) {
     if (ACT[actName]) {

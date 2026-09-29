@@ -13,6 +13,13 @@
     return (c.base && c.key) ? "real" : "mock";
   }
 
+  // 颜色兼容：单值 / 数组 → 顿号分隔字符串（老数据 color 是单值）
+  function toColorsStr(c) {
+    if (Array.isArray(c)) return c.filter(Boolean).join("、");
+    var s = String(c == null ? "" : c).trim();
+    return s;
+  }
+
   // 演示模式的确定性伪随机（同一 seed 得到同一结果，便于回归）
   function srand(seed) {
     var s = 0;
@@ -249,7 +256,7 @@
         "风格：" + (words.style || ""),
         "季节：" + (words.season || ""),
         "主面料：" + (words.mainFabric || ""),
-        "颜色：" + (words.color || ""),
+        "颜色：" + toColorsStr(words.color),
         "细节：" + ((words.details || []).join("、")),
         "装饰：" + ((words.decors || []).join("、")),
         "尺码：" + ((words.sizes || []).join("、")),
@@ -312,9 +319,33 @@
       }
     }
 
+    // 设计词的 prompt 组装（纯函数，便于断言「主题/柄图/避免词真的传进去了」）
+    // 返回 { system, user }
+    function buildWordPrompt(input) {
+      input = input || {};
+      var theme = String(input.theme || "").trim();
+      var prints = String(input.prints || "").trim();
+      var avoid = Array.isArray(input.avoid) ? input.avoid.filter(Boolean) : [];
+      var prompt = String(input.prompt || "").trim();
+
+      var sys = "你是洛丽塔服装设计助手。只返回 JSON，不要 Markdown。" +
+        "字段：style、season、mainFabric、color、details、decors、sizes、mood。" +
+        "color 必须是字符串数组（单色也写成只有一个元素的数组）。details、decors、sizes 也必须是字符串数组。";
+      if (theme) sys += "整体风格必须是「" + theme + "」系。";
+      if (avoid.length) sys += "绝对禁止出现以下元素：" + avoid.join("、") + "。" +
+        "生成的 style、mainFabric、color、details、decors 里都不允许包含这些词或同义替换。";
+
+      var lines = [];
+      if (theme) lines.push("主题风格：" + theme);
+      if (prints) lines.push("柄图（印花图案）：" + prints);
+      if (prompt) lines.push("需求：" + prompt);
+      if (avoid.length) lines.push("不要出现：" + avoid.join("、"));
+      return { system: sys, user: lines.join("\n") || "洛丽塔日常款" };
+    }
+
     global.AI = {
       chat: chat, mode: mode, imageMode: imageMode, img: imgDataUri, image: image,
       srand: srand, listModels: listModels, searchWeb: searchWeb,
-      splitBom: splitBom, comparePrice: comparePrice
+      splitBom: splitBom, comparePrice: comparePrice, buildWordPrompt: buildWordPrompt
     };
 })(window);

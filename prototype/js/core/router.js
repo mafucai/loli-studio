@@ -4,15 +4,17 @@
 (function (global) {
   "use strict";
   var STEPS = [
+    { id: "plan",  n: 0, title: "企划" },
     { id: "word",  n: 1, title: "设计词" },
     { id: "img",   n: 2, title: "出图" },
-    { id: "part",  n: 3, title: "拆件" },
-    { id: "check", n: 4, title: "查重" },
-    { id: "buy",   n: 5, title: "采购" },
-    { id: "look",  n: 6, title: "组合" },
-    { id: "model", n: 7, title: "模特" },
-    { id: "fact",  n: 8, title: "工厂" },
-    { id: "cost",  n: 9, title: "成本" }
+    { id: "vote",  n: 3, title: "图透" },
+    { id: "part",  n: 4, title: "拆件" },
+    { id: "check", n: 5, title: "查重" },
+    { id: "buy",   n: 6, title: "采购" },
+    { id: "look",  n: 7, title: "组合" },
+    { id: "model", n: 8, title: "模特" },
+    { id: "fact",  n: 9, title: "工厂" },
+    { id: "cost",  n: 10, title: "成本" }
   ];
   var views = {};
 
@@ -40,5 +42,10 @@
     return 0;
   }
 
-  global.Router = { STEPS: STEPS, registerPage: registerPage, render: render, goto: goto, idx: idx, views: views };
+  // 取某步的相邻步（避免各文件写死 "word"/"img" 这类字面量）
+  function prevId(id) { var i = idx(id); return i > 0 ? STEPS[i - 1].id : ""; }
+  function nextId(id) { var i = idx(id); return i >= 0 && i < STEPS.length - 1 ? STEPS[i + 1].id : ""; }
+
+  global.Router = { STEPS: STEPS, registerPage: registerPage, render: render, goto: goto,
+    idx: idx, prevId: prevId, nextId: nextId, views: views };
 })(window);

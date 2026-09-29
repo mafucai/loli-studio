@@ -15,6 +15,96 @@
   var DECOR = ["立体花朵", "蕾丝刺绣", "丝带蝴蝶结", "珍珠点缀", "金属扣", "蕾丝蝴蝶结"];
   var SIZE = ["5码", "7码", "9码", "11码", "13码"];
 
+  // 企划：主题风格（文档【第二层】第 0 步）
+  var THEMES = ["甜系", "古典", "哥特", "中华风", "和风", "暗黑"];
+
+  // 避免词的候选标签（只是快捷标签，用户可自由输入）
+  var AVOID_TAGS = ["蕾丝", "蝴蝶结", "印花", "亮片", "露肩", "长袖", "高腰", "动物纹"];
+
+  // color 兼容：单值 → 单元素数组（老数据零迁移）
+  // 语义正确：单色的款就是「只有一个颜色的款」，不是降级、不标旧格式
+  function toColors(c) {
+    if (Array.isArray(c)) return c.map(function (x) { return String(x); }).filter(Boolean);
+    var s = String(c == null ? "" : c).trim();
+    return s ? [s] : [];
+  }
+
+  // 柄图候选：纯花色，不是服装造型图（柄图 = 印花图案）
+  function printCandidates(theme, seed) {
+    var t = THEMES.indexOf(theme) >= 0 ? theme : THEMES[0];
+    var palettes = {
+      "甜系": ["#f6d5e0", "#f9ecd9", "#e8b4c8"],
+      "古典": ["#e8dcc3", "#c9a96a", "#8a6f4a"],
+      "哥特": ["#2a2230", "#5a3a52", "#9a6f8a"],
+      "中华风": ["#8a2b28", "#d9a441", "#f0e0c0"],
+      "和风": ["#3a4a5a", "#c96f6a", "#efe4d2"],
+      "暗黑": ["#1a1a1e", "#3a2f3a", "#6a5a4a"]
+    };
+    var p = palettes[t];
+    var names = ["小碎花", "缎带格纹", "藤蔓蕾丝", "月相星轨", "缎面暗纹", "蝴蝶结链"];
+    var out = [];
+    for (var i = 0; i < 6; i++) {
+      out.push({ id: "p" + i, name: names[i], uri: printSvg(i, p, seed || t + i) });
+    }
+    return out;
+  }
+
+  // 纯 SVG 花色：不依赖 CDN、不依赖图片接口
+  function printSvg(i, p, seed) {
+    var rnd = R("print:" + seed + i);
+    var shapes = "";
+    var n = 10 + Math.floor(rnd() * 8);
+    for (var k = 0; k < n; k++) {
+      var x = Math.round(rnd() * 100), y = Math.round(rnd() * 100), r = 3 + rnd() * 9;
+      var c = p[k % p.length];
+      if (i % 3 === 0) shapes += '<circle cx="' + x + '" cy="' + y + '" r="' + r.toFixed(1) + '" fill="' + c + '" opacity="0.85"/>';
+      else if (i % 3 === 1) shapes += '<rect x="' + x + '" y="' + y + '" width="' + (r * 1.4).toFixed(1) + '" height="' + r.toFixed(1) + '" fill="' + c + '" opacity="0.8" transform="rotate(' + Math.round(rnd() * 45) + " " + x + " " + y + ')"/>';
+      else shapes += '<path d="M' + x + " " + y + " q " + (r * 1.6).toFixed(1) + " -" + (r * 1.6).toFixed(1) + " " + (r * 3.2).toFixed(1) + ' 0" stroke="' + c + '" stroke-width="1.6" fill="none" opacity="0.85"/>';
+    }
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#' +
+      (i % 2 ? "221f1c" : "1b1815") + '"/>' + shapes + "</svg>");
+  }
+
+  // 柄图描述：进 AI prompt 用（文字版，AI 看不到图）
+  function printDesc(prints) {
+    if (!prints || !prints.picks || !prints.picks.length) return "";
+    var map = {};
+    printCandidates(prints.theme).forEach(function (c) { map[c.id] = c.name; });
+    return prints.picks.map(function (id) { return map[id] || ""; }).filter(Boolean).join("、");
+  }
+
+  // 图透投票（文档第 4 项）：投票/驳回/待定的可选值 + 改版原因
+  var VOTE_CHOICES = ["通过", "驳回", "待定"];
+  var REVISE_REASONS = ["廓形不对", "颜色偏了", "细节过多", "细节太少", "面料不适", "价格偏高", "其他"];
+
+  // 追加一条版本记录（纯函数：不改原数组，返回新数组）
+  // 「留痕」的全部含义：旧版本永不删除，只往后追加
+  function pushVersion(versions, entry) {
+    var list = Array.isArray(versions) ? versions.slice() : [];
+    list.push({
+      n: list.length + 1,
+      uri: String(entry.uri || ""),
+      source: String(entry.source || "demo"),
+      at: entry.at || new Date().toISOString(),
+      reason: String(entry.reason || ""),
+      note: String(entry.note || "")
+    });
+    return list;
+  }
+
+  // 追加一条投票记录
+  function pushVote(votes, entry) {
+    var list = Array.isArray(votes) ? votes.slice() : [];
+    list.push({
+      versionNo: Number(entry.versionNo) || 1,
+      choice: VOTE_CHOICES.indexOf(entry.choice) >= 0 ? entry.choice : "待定",
+      note: String(entry.note || ""),
+      at: entry.at || new Date().toISOString()
+    });
+    return list;
+  }
+
   // 1) 设计词：给一句 prompt 返回结构化设计词
   function designWords(prompt) {
     var rnd = R(prompt || "empty");
@@ -29,7 +119,7 @@
       style: pick(STYLE),
       season: pick(SEASON),
       mainFabric: pick(FABRIC),
-      color: pick(COLOR),
+      color: [pick(COLOR)],
       details: sample(DETAIL, 4),
       decors: sample(DECOR, 3),
       sizes: SIZE.slice(),
@@ -39,7 +129,7 @@
 
   // 2) BOM：从设计词拆零件，含面料米数、辅料、工序、耗时
   function bom(words) {
-    var rnd = R("bom:" + words.color + words.style);
+    var rnd = R("bom:" + toColors(words.color).join("+") + words.style);
     var rows = [
       { part: "主裙身（外层）", material: words.mainFabric, amount: 2.4, unit: "米", price: 55, note: "含蕾丝拼接" },
       { part: "内衬裙", material: "涤纶里布", amount: 2.0, unit: "米", price: 12, note: "防透" },
@@ -80,7 +170,7 @@
 
   // 3) 查重：小红书 / 抖音 / 淘宝 / 闲鱼 / 微博
   function dedup(words) {
-    var keyword = ["洛丽塔", words.style || "", words.color || "", words.mainFabric || ""].filter(Boolean).join(" ");
+    var keyword = ["洛丽塔", words.style || ""].concat(toColors(words.color)).concat([words.mainFabric || ""]).filter(Boolean).join(" ");
     var q = encodeURIComponent(keyword);
     return {
       keyword: keyword,
@@ -114,9 +204,9 @@
   }
 
   // 5) 组合实况 + 6) 模特图：仅返回 URI + 描述
-  function combo(bomData) { return { uri: global.AI.img("combo", bomData.words.color, 400, 500), note: "组合状态：主裙 + 裙撑 + 蝴蝶结，正面平铺" }; }
+  function combo(bomData) { return { uri: global.AI.img("combo", toColors(bomData.words.color).join(""), 400, 500), note: "组合状态：主裙 + 裙撑 + 蝴蝶结，正面平铺" }; }
   function look(bomData)   { return { uri: global.AI.img("look",  bomData.words.style, 400, 500), note: "细节：领口 + 袖口 + 蕾丝花边" }; }
-  function model(bomData)  { return { uri: global.AI.img("model", bomData.words.color + bomData.words.style, 300, 600), note: "模特穿着效果，站姿正面" }; }
+  function model(bomData)  { return { uri: global.AI.img("model", toColors(bomData.words.color).join("") + bomData.words.style, 300, 600), note: "模特穿着效果，站姿正面" }; }
 
   function factories() {
     var keyword = "洛丽塔 服装加工 工厂";
@@ -147,6 +237,10 @@
 
   global.Factory = {
     designWords: designWords, bom: bom, dedup: dedup, sourcing: sourcing,
-    combo: combo, look: look, model: model, factories: factories, finance: finance
+    combo: combo, look: look, model: model, factories: factories, finance: finance,
+    toColors: toColors, THEMES: THEMES, AVOID_TAGS: AVOID_TAGS,
+    printCandidates: printCandidates, printDesc: printDesc,
+    VOTE_CHOICES: VOTE_CHOICES, REVISE_REASONS: REVISE_REASONS,
+    pushVersion: pushVersion, pushVote: pushVote
   };
 })(window);

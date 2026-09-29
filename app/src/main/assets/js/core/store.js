@@ -162,20 +162,27 @@
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       prompt: prompt || "",
-      step: "word",
-      words: null,           // step 1
-      imgUri: null,          // step 2
+      step: "plan",
+      theme: "",             // 企划：主题风格（甜系/古典/哥特/中华风/和风/暗黑）
+      prints: null,          // 企划：柄图 { theme, picks:[候选id], mode:"ai"|"demo", at }
+      avoid: [],             // 设计词：避免词（真的传给文本 AI 避开）
+      words: null,           // 步骤 word
+      imgUri: null,          // 步骤 img
       imgPassed: false,
-      bom: null,             // step 3
-      check: null,           // step 4
+      versions: [],          // 步骤 vote：版本留痕（只增不删，数组就是证据）
+      currentVersion: 0,     // 步骤 vote：当前版本下标
+      votes: [],             // 步骤 vote：投票/意见记录（可追溯）
+      voteNote: "",          // 步骤 vote：当前版本的意见备注
+      bom: null,             // 步骤 part
+      check: null,           // 步骤 check
       markedOriginal: false,
-      sourcing: null,        // step 5
-      combo: null,           // step 6
-      model: null,           // step 7
-      factories: null,       // step 8
-      finance: null,         // step 9
+      sourcing: null,        // 步骤 buy
+      combo: null,           // 步骤 look
+      model: null,           // 步骤 model
+      factories: null,       // 步骤 fact
+      finance: null,         // 步骤 cost
       pickedFactory: null,
-      history: [{ at: new Date().toISOString(), act: "新建", from: null, to: "word" }]
+      history: [{ at: new Date().toISOString(), act: "新建", from: null, to: "plan" }]
     };
   }
 
