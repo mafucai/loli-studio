@@ -171,82 +171,6 @@
     }).join("");
   }
 
-  /* ===== 图透（文档第 4、5 项）===== */
-  // 多版本对比 + 投票 + 改版留痕（versions 只增不删）
-  function vVote(d) {
-    var versions = d.versions || [];
-    var cur = versions[d.currentVersion || 0] || null;
-    var votes = d.votes || [];
-    var body = "";
-
-    if (!versions.length) {
-      body += '<div class="block"><h2>图透</h2>' +
-        '<p class="hint">先把第 2 步的候选图设为第 1 版，才能开始图透。</p>' +
-        '<button type="button" class="btn primary wide" data-act="start-version">把当前图设为第 1 版</button></div>';
-      return screen("vote", "图透", "第 3 步 · 多版本对比与意见", body);
-    }
-
-    body += '<div class="block"><h2>当前 · 第 ' + cur.n + " 版</h2>" +
-      '<img class="card-img tall" src="' + esc(cur.uri) + '" alt="第 ' + cur.n + ' 版">' +
-      '<p class="hint">来源：' + esc(cur.source === "ai" ? "图片接口生成" : "演示图") +
-      " · " + esc(String(cur.at).slice(0, 16).replace("T", " ")) + "</p>" +
-      (cur.reason ? '<p class="hint">改版原因：' + esc(cur.reason) + "</p>" : "") +
-      (cur.note ? '<p class="note">' + esc(cur.note) + "</p>" : "") + "</div>";
-
-    if (versions.length > 1) {
-      body += '<div class="block"><h2>全部版本（' + versions.length + '）</h2>' +
-        '<p class="hint">旧版本永不删除，这就是改版留痕。点缩略图切换对比。</p>' +
-        '<div class="ver-grid">' + versions.map(function (v, i) {
-          var on = i === (d.currentVersion || 0);
-          return '<button type="button" class="ver' + (on ? " on" : "") +
-            '" data-act="switch-version" data-index="' + i + '">' +
-            '<img src="' + esc(v.uri) + '" alt="第 ' + v.n + ' 版">' +
-            '<span>第 ' + v.n + " 版</span>" +
-            "<em>" + esc(String(v.at).slice(5, 10)) + "</em></button>";
-        }).join("") + "</div></div>";
-    }
-
-    var curVotes = votes.filter(function (v) { return v.versionNo === cur.n; });
-    body += '<div class="block"><h2>这一版怎么评</h2>' +
-      '<div class="chips">' + Factory.VOTE_CHOICES.map(function (c) {
-        var on = curVotes.some(function (v) { return v.choice === c; });
-        return '<button type="button" class="chip' + (on ? " on" : "") +
-          '" data-act="vote" data-value="' + esc(c) + '">' + esc(c) + "</button>";
-      }).join("") + "</div>" +
-      '<label for="in-vnote">意见 / 需要改哪里</label>' +
-      '<input id="in-vnote" placeholder="例：裙摆太长，腰线再高一点" value="' + esc(d.voteNote || "") + '">' +
-      '<button type="button" class="btn wide" data-act="save-vote">记录这一票</button></div>';
-
-    if (curVotes.length) {
-      body += '<div class="block"><h2>已记录</h2>' + curVotes.map(function (v) {
-        return '<div class="hr"></div><strong>' + esc(v.choice) + "</strong>" +
-          '<p class="hint">' + esc(String(v.at).slice(0, 16).replace("T", " ")) + "</p>" +
-          (v.note ? '<p class="note">' + esc(v.note) + "</p>" : "");
-      }).join("") + "</div>";
-    }
-
-    var revised = versions.filter(function (v) { return v.n > 1; });
-    if (revised.length) {
-      body += '<div class="block"><h2>改版记录</h2>' + revised.map(function (v) {
-        return '<div class="hr"></div><strong>第 ' + v.n + " 版</strong>" +
-          '<p class="hint">' + esc(v.reason || "未填原因") + " · " +
-          esc(String(v.at).slice(0, 16).replace("T", " ")) + "</p>";
-      }).join("") + "</div>";
-    }
-
-    body += '<div class="block"><h2>改版重开</h2>' +
-      '<p class="hint">改版必须填原因，否则留痕没有意义。改版新增一版，旧版保留。</p>' +
-      '<label for="in-reason">改版原因</label>' +
-      '<div class="chips">' + Factory.REVISE_REASONS.map(function (r) {
-        return '<button type="button" class="chip" data-act="pick-reason" data-value="' + esc(r) + '">' + esc(r) + "</button>";
-      }).join("") + "</div>" +
-      '<input id="in-reason" placeholder="点上面一项，或自己写" value="' + esc(d.reviseReason || "") + '">' +
-      '<button type="button" class="btn primary wide" data-act="revise-img">改版重开（生成新版）</button></div>';
-
-    body += '<div class="block">' + nextBtn("part", "下一步 · 拆件") + "</div>";
-    return screen("vote", "图透", "第 3 步 · 多版本对比与意见", body);
-  }
-
   /* ===== 定样定价（文档第 6 项）===== */
   // cost 页不动（算成本）；本页做对外定价 + 成团线 + 工期 + SKU
   function vFinal(d) {
@@ -368,8 +292,57 @@
       body += '<div class="block"><h2>合计</h2><div class="price">' + money(total) +
         "<small> / 定金合计</small></div>" +
         '<div class="kv"><span>订单数</span><span>' + orders.length + " 单</span></div>" +
-        '<div class="kv"><span>件数</span><span>' + sumQty + " 件</span></div>" +
-        '<p class="hint">下一批做「成团判定 + 流团退款」（文档第 8 项）。</p></div>';
+        '<div class="kv"><span>件数</span><span>' + sumQty + " 件</span></div></div>";
+    }
+
+    // —— 成团判定（文档 §四 分色成团 / §五 流团）——
+    var due = OM().isDue(pre.deadline);
+    var j = d.judge;
+    body += '<div class="block"><h2>成团判定</h2>' +
+      '<p class="hint">本款<b>分色成团</b>：未达线颜色将流团，并退还该色定金。' +
+      (pre.deadline ? "<br>成团截止：" + esc(pre.deadline) + (due ? "（已到期）" : "（未到期，可提前判）") : "<br>未设截止日期，可提前判。") +
+      "</p>" +
+      '<button type="button" class="btn primary wide" data-act="judge-pre">' +
+      (j ? "重新判定" : "判定成团") + "</button></div>";
+
+    if (j) {
+      var label = j.designState === "已成团" ? (j.partial ? "部分成团" : "全部成团") : "已流团";
+      body += '<div class="block"><h2>判定结果 · ' + esc(label) + "</h2>" +
+        (j.partial ? '<p class="warn-note">够线的颜色正常做；不够线的颜色单独流团，退还该色定金。</p>' : "") +
+        '<div class="stack">' + j.rows.map(function (r) {
+          return '<div class="hr"></div><strong>' + esc(r.color) + " · 第 " + r.batchNo + " 团</strong>" +
+            '<p class="hint">' + r.got + " / " + r.target + " 件（" + Math.round(r.rate * 100) + "%） → " +
+            (r.enough ? '<span class="gold">成团</span>' : '<span class="bad">流团</span>') + "</p>";
+        }).join("") + "</div></div>";
+    }
+
+    // —— 流团退款清单（App 不自动退，只出清单；文档 §五 / §一）——
+    if (j && j.refundable.length) {
+      var rl = d.refundList;
+      body += '<div class="block"><h2>流团退款清单</h2>' +
+        '<p class="hint">App 不收款也不自动退款，这里只生成清单。真实退款请在平台操作。</p>' +
+        (rl
+          ? '<div class="price">' + money(rl.total) + "<small> / 应退定金</small></div>" +
+            '<div class="kv"><span>涉及订单</span><span>' + rl.count + " 单</span></div>" +
+            '<div class="scroll-x"><table><thead><tr><th>匿名ID</th><th>颜色</th><th>金额</th></tr></thead><tbody>' +
+            rl.rows.map(function (r) {
+              return "<tr><td>" + esc(r.anonId) + "</td><td>" + esc(r.color) + '</td><td class="num">' + money(r.amount) + "</td></tr>";
+            }).join("") + "</tbody></table></div>"
+          : '<p class="hint">有 ' + j.refundable.length + " 单需要退定金。</p>") +
+        '<button type="button" class="btn wide" data-act="build-refund">' +
+        (rl ? "重新生成清单" : "生成退款清单（" + j.refundable.length + " 单）") + "</button>" +
+        (rl ? '<button type="button" class="btn bad wide" data-act="mark-refunded">标记为已退款（订单转已退款）</button>' : "") +
+        "</div>";
+    }
+
+    if (j) {
+      body += '<div class="block"><h2>款状态</h2>' +
+        '<div class="kv"><span>当前</span><span>' + esc(d.designState || "预售中") + "</span></div>" +
+        '<div class="kv"><span>判定后应为</span><span class="gold">' + esc(j.designState) + "</span></div>" +
+        (d.designState === j.designState
+          ? '<p class="hint">已同步。</p>'
+          : '<button type="button" class="btn primary wide" data-act="apply-design-state">把款状态改为「' + esc(j.designState) + '」</button>') +
+        "</div>";
     }
 
     return screen("pre", "预售", stepLabel("pre"), body);
@@ -378,7 +351,6 @@
   var _origHistory = R.vHistory;
   R.vHistory = vHistory;
   R.vPlan = vPlan;
-  R.vVote = vVote;
   R.vFinal = vFinal;
   R.vPre = vPre;
   R.aiResults = aiResults;

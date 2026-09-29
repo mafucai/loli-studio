@@ -128,9 +128,86 @@
     });
     return out;
   }
+  /* ===== 成团判定（文档 §二 款状态机 / §四 部分成团 / §五 异常矩阵）===== */
+  // 款状态机（与订单状态机分开；文档 §二）
+  var DESIGN_STATES = ["企划中","图透中","投票中","定样","预售中","已成团","已流团","生产中","已发货","售后中","完结","改款重开"];
+  var DESIGN_FLOW = {
+    "企划中":   ["图透中","改款重开"],
+    "图透中":   ["投票中","改款重开"],
+    "投票中":   ["定样","改款重开"],
+    "定样":     ["预售中","改款重开"],
+    "预售中":   ["已成团","已流团"],
+    "已成团":   ["生产中"],
+    "已流团":   ["改款重开","完结"],
+    "生产中":   ["已发货"],
+    "已发货":   ["售后中","完结"],
+    "售后中":   ["完结","改款重开"],
+    "完结":     [],
+    "改款重开": ["图透中","定样"]
+  };
+
+  function canTransitDesign(from, to) {
+    var list = DESIGN_FLOW[from];
+    return !!list && list.indexOf(to) >= 0;
+  }
+
+  // 是否已到成团截止日（deadline 为空视为「未设」，不自动判定）
+  function isDue(deadline, now) {
+    if (!deadline) return false;
+    var t = Date.parse(String(deadline).length <= 10 ? deadline + "T23:59:59" : deadline);
+    if (!isFinite(t)) return false;
+    return (now ? new Date(now) : new Date()).getTime() >= t;
+  }
+
+  // 成团判定（§四 A 分色成团）：
+  //   逐个「颜色 × 批次」判定 → 够线=已成团，不够线=该色流团（退还该色定金）
+  //   返回 { rows:[{color,batchNo,target,got,rate,enough}], enough:[...], failed:[...],
+  //          designState:"已成团"|"已流团"|"", refundable:[订单 anonId...] }
+  function judgePre(pre, orders, opts) {
+    opts = opts || {};
+    if (!pre) return { __error: "还没开团" };
+    var tally = tallyByBatch(pre, orders);
+    if (!tally.length) return { __error: "没有批次可判定" };
+    var enough = tally.filter(function (t) { return t.enough; });
+    var failed = tally.filter(function (t) { return !t.enough; });
+    // 定金逾期/已退款的订单不占成团名额（§五），tallyByBatch 已排除
+    var failedKeys = {};
+    failed.forEach(function (t) { failedKeys[t.color + "#" + t.batchNo] = true; });
+    var refundable = (orders || []).filter(function (o) {
+      return failedKeys[o.color + "#" + Number(o.batchNo)] &&
+             ["已付定金","待尾款","已付尾款"].indexOf(o.state) >= 0;
+    }).map(function (o) { return o.anonId; });
+    // 款状态：全不够→已流团；只要有够的→已成团（部分成团按 §四 处理）
+    var state = failed.length === 0 ? "已成团" : (enough.length === 0 ? "已流团" : "已成团");
+    return {
+      rows: tally, enough: enough, failed: failed,
+      designState: state,
+      partial: enough.length > 0 && failed.length > 0,
+      refundable: refundable,
+      at: new Date().toISOString()
+    };
+  }
+
+  // 流团退款：把流团色的订单推进「退款中」，并生成退款清单（App 不自动退，只出清单）
+  function buildRefundList(pre, orders, judgeResult) {
+    var ids = (judgeResult && judgeResult.refundable) || [];
+    var rows = (orders || []).filter(function (o) { return ids.indexOf(o.anonId) >= 0; });
+    var total = rows.reduce(function (s, o) { return s + (Number(o.amount) || 0); }, 0);
+    return {
+      rows: rows.map(function (o) {
+        return { anonId: o.anonId, color: o.color, batchNo: o.batchNo, qty: o.qty,
+                 amount: o.amount, from: o.state };
+      }),
+      total: total, count: rows.length, at: new Date().toISOString()
+    };
+  }
+
   global.OrderModel = {
     ORDER_STATES: ORDER_STATES, ORDER_FLOW: ORDER_FLOW, REALNO_ACTS: REALNO_ACTS,
-    canTransit: canTransit, nextAnonId: nextAnonId, openPre: openPre,
-    parseOrderLines: parseOrderLines, makeOrders: makeOrders, tallyByBatch: tallyByBatch
+    DESIGN_STATES: DESIGN_STATES, DESIGN_FLOW: DESIGN_FLOW,
+    canTransit: canTransit, canTransitDesign: canTransitDesign,
+    nextAnonId: nextAnonId, openPre: openPre,
+    parseOrderLines: parseOrderLines, makeOrders: makeOrders, tallyByBatch: tallyByBatch,
+    isDue: isDue, judgePre: judgePre, buildRefundList: buildRefundList
   };
 })(window);

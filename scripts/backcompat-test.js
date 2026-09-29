@@ -160,5 +160,58 @@ catch(e){ ok("vPre 无定样不崩 ["+e.message+"]", false); }
 try { const h=R.vPre({id:"x",step:"pre",final:FIN,pre:PRE,orders:MADE.orders}); ok("vPre 有数据可渲染", h.indexOf("D-0001")>=0 && h.indexOf("成团进度")>=0); }
 catch(e){ ok("vPre 有数据可渲染 ["+e.message+"]", false); }
 
+
+console.log("— J. 成团判定 / 流团退款（批 E2）—");
+const PRE2={batches:[{no:1,color:"白紫",target:10},{no:1,color:"黑黑",target:10}],nextAnon:1,deadline:"2099-12-31"};
+const ORD2=[
+ {anonId:"D-0001",color:"白紫",batchNo:1,qty:10,amount:900,state:"已付定金"},
+ {anonId:"D-0002",color:"黑黑",batchNo:1,qty:3,amount:270,state:"已付定金"}
+];
+const JD2=OrderModel.judgePre(PRE2,ORD2);
+ok("部分成团 → designState 已成团", JD2.designState==="已成团");
+ok("partial 标记为真", JD2.partial===true);
+ok("够线色 = 白紫", JD2.enough.length===1 && JD2.enough[0].color==="白紫");
+ok("流团色 = 黑黑", JD2.failed.length===1 && JD2.failed[0].color==="黑黑");
+ok("只退流团色的定金", JSON.stringify(JD2.refundable)===JSON.stringify(["D-0002"]));
+
+// 全部不够 → 已流团，全退
+const JD3=OrderModel.judgePre(PRE2,[{anonId:"D-1",color:"黑黑",batchNo:1,qty:1,amount:90,state:"已付定金"}]);
+ok("全部不够 → 已流团", JD3.designState==="已流团");
+ok("全部流团时全退", JD3.refundable.length===1);
+ok("全部够 → 非 partial", OrderModel.judgePre(PRE2,[{anonId:"D-1",color:"白紫",batchNo:1,qty:10,amount:900,state:"已付定金"},{anonId:"D-2",color:"黑黑",batchNo:1,qty:10,amount:900,state:"已付定金"}]).partial===false);
+
+// 不占成团名额：定金逾期/已退款/完结 的状态不计
+["定金逾期","已退款"].forEach(function (st) {
+  const j=OrderModel.judgePre(PRE2,[{anonId:"D-9",color:"白紫",batchNo:1,qty:10,amount:900,state:st}]);
+  ok(st+" 不计入成团 → 白紫仍流团", j.enough.length===0);
+});
+ok("待尾款/已付尾款 仍计入成团", OrderModel.judgePre(PRE2,[{anonId:"D-9",color:"白紫",batchNo:1,qty:10,amount:900,state:"已付尾款"}]).enough.length===1);
+
+// 退款清单
+const RFL=OrderModel.buildRefundList(PRE2,ORD2,JD2);
+ok("清单只含应退单", RFL.count===1 && RFL.rows[0].anonId==="D-0002");
+ok("应退金额 = 该单定金", RFL.total===270);
+ok("清单不含身份字段", RFL.rows.every(r=>!("name" in r)&&!("phone" in r)&&!("address" in r)));
+
+// 到期判断
+ok("过期日期 isDue=true", OrderModel.isDue("2020-01-01"));
+ok("未来日期 isDue=false", !OrderModel.isDue("2099-01-01"));
+ok("空 deadline 不自动判", !OrderModel.isDue(""));
+ok("非法日期不崩", !OrderModel.isDue("乱码"));
+
+// 款状态机
+ok("预售中→已成团 合法", OrderModel.canTransitDesign("预售中","已成团"));
+ok("预售中→已流团 合法", OrderModel.canTransitDesign("预售中","已流团"));
+ok("预售中→生产中 非法", !OrderModel.canTransitDesign("预售中","生产中"));
+ok("已流团→改款重开 合法（闭环 §十一）", OrderModel.canTransitDesign("已流团","改款重开"));
+ok("未开团判定被拒", !!OrderModel.judgePre(null,[]).__error);
+
+// 老设计单（无 judge/pre/orders）渲染不崩
+try { const h=R.vPre({id:"x",step:"pre",final:FIN,pre:PRE,orders:[]}); ok("vPre 无判定期不崩", h.indexOf("成团判定")>=0); }
+catch(e){ ok("vPre 无判定期不崩 ["+e.message+"]", false); }
+try { const h2=R.vPre({id:"x",step:"pre",final:FIN,pre:PRE,orders:MADE.orders,judge:JD2,refundList:RFL});
+  ok("vPre 有判定+清单可渲染", h2.indexOf("判定结果")>=0 && h2.indexOf("流团退款清单")>=0 && h2.indexOf("D-0002")>=0); }
+catch(e){ ok("vPre 有判定+清单可渲染 ["+e.message+"]", false); }
+
 console.log("\n结果：✅ "+pass+"  ❌ "+fail);
 process.exit(fail?1:0);

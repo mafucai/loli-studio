@@ -30,6 +30,7 @@ var files = {
   "vote-actions.js":  "js/core/vote-actions.js",
   "final-actions.js": "js/core/final-actions.js",
   "word-actions.js":  "js/core/word-actions.js",
+  "render-vote.js":   "js/core/render-vote.js",
   "order-model.js":   "js/core/order-model.js",
   "pre-actions.js":   "js/core/pre-actions.js",
   "actions.js":       "js/core/actions.js",
@@ -103,6 +104,7 @@ var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
 while ((m = r2.exec(src["render.js"]))) usedActs[m[1]] = true;
 while ((m = r2.exec(src["render-extra.js"]))) usedActs[m[1]] = true;
+while ((m = r2.exec(src["render-vote.js"]))) usedActs[m[1]] = true;
 // 加上 main.js 里 run() 直接调用的
 var r3 = /Actions\.run\("([^"]+)"/g;
 while ((m = r3.exec(src["main.js"]))) usedActs[m[1]] = true;
@@ -130,13 +132,13 @@ assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store �
 // 10. 加载顺序依赖：index.html 加载顺序为 router→ai→factory→store→render→actions→main
 var htmlScripts = (src["index.html"].match(/src="([^"]+)"/g) || [])
   .map(function (s) { return s.match(/src="([^"]+)"/)[1]; });
-var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/order-model.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/final-actions.js","js/core/pre-actions.js","js/core/word-actions.js","js/core/actions.js","js/core/main.js"];
+var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/order-model.js","js/core/store.js","js/core/render.js","js/core/render-vote.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/final-actions.js","js/core/pre-actions.js","js/core/word-actions.js","js/core/actions.js","js/core/main.js"];
 // 顺序：router, ai, factory 是纯模块无依赖；store 也不依赖；render 依赖 Router/AI；actions 依赖 Store/Router/AI；main 依赖全部
 var orderIdx = {};
 expected.forEach(function (e, i) { orderIdx[e] = i; });
 var actualIdx = {};
 htmlScripts.forEach(function (s, i) { actualIdx[s] = i; });
-assert(htmlScripts.length === 14, "10a. index.html 加载 14 个脚本（实际 " + htmlScripts.length + "）");
+assert(htmlScripts.length === 15, "10a. index.html 加载 15 个脚本（实际 " + htmlScripts.length + "）");
 // render.js 必须在 router.js 后
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/router.js"], "10b. render 在 router 后");
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/ai.js"],     "10c. render 在 ai 后");
@@ -217,12 +219,12 @@ assert(/function toColorsStr\s*\(/.test(src["ai.js"]) || /toColors/.test(src["ai
 
 
 // 17. 批 C：图透投票 + 改版留痕
-assert(/function vVote\s*\(/.test(src["render-extra.js"]), "17a. 图透视图 vVote 存在");
+assert(/function vVote\s*\(/.test(src["render-vote.js"]), "17a. 图透视图 vVote 存在");
 ["start-version","switch-version","vote","save-vote","pick-reason","revise-img"].forEach(function (a) {
   assert(acts[a] === true, "17b. 图透动作存在: " + a);
 });
-assert(/data-act="switch-version"/.test(src["render-extra.js"]), "17c. 版本缩略图可切换");
-assert(/data-act="revise-img"/.test(src["render-extra.js"]), "17d. 改版入口存在");
+assert(/data-act="switch-version"/.test(src["render-vote.js"]), "17c. 版本缩略图可切换");
+assert(/data-act="revise-img"/.test(src["render-vote.js"]), "17d. 改版入口存在");
 // 改版必须填原因
 assert(/改版必须填原因/.test(src["vote-actions.js"]), "17e. 改版强制填原因");
 // versions 只增不删：pushVersion 用 slice 复制，且无 splice/pop/shift
@@ -307,6 +309,27 @@ var omDefs = (src["order-model.js"].match(/DEFAULT_TARGET\s*=\s*1000/g) || []).l
 var fcDefs = (src["factory.js"].match(/DEFAULT_TARGET\s*=\s*1000/g) || []).length;
 assert(omDefs === 0 && fcDefs === 1, "20l. DEFAULT_TARGET 只在 factory.js 定义一次");
 assert(/global\.Factory\.DEFAULT_TARGET/.test(src["order-model.js"]), "20m. order-model 从 Factory 取默认值");
+
+
+// 21. 批 E2：成团判定 + 流团退款
+["judge-pre","build-refund","mark-refunded","apply-design-state"].forEach(function (a) {
+  assert(acts[a] === true, "21a. 成团判定动作存在: " + a);
+});
+assert(/function judgePre\s*\(/.test(src["order-model.js"]), "21b. judgePre 存在");
+assert(/function buildRefundList\s*\(/.test(src["order-model.js"]), "21c. 退款清单生成存在");
+assert(/function isDue\s*\(/.test(src["order-model.js"]), "21d. 到期判断存在");
+assert(/DESIGN_FLOW\s*=\s*\{/.test(src["order-model.js"]), "21e. 款状态机存在");
+assert(/function canTransitDesign\s*\(/.test(src["order-model.js"]), "21f. 款状态流转校验存在");
+// 款状态机与订单状态机必须是两套（文档 §二/§三 分开）
+assert(/ORDER_FLOW\s*=/.test(src["order-model.js"]) && /DESIGN_FLOW\s*=/.test(src["order-model.js"]),
+  "21g. 款状态机与订单状态机分开");
+// 判定结果要含 partial（部分成团，§四 A 策略）
+assert(/partial:/.test(src["order-model.js"]), "21h. 判定结果含 partial");
+// 预售页必须写明分色成团提示（文档 §四 硬要求）
+assert(/分色成团/.test(src["render-extra.js"]) && /退还该色定金/.test(src["render-extra.js"]),
+  "21i. 预售页写明分色成团与退定金");
+// App 不自动退款：清单只是清单
+assert(/App 不收款也不自动退款/.test(src["render-extra.js"]), "21j. 明确 App 不自动退款");
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");

@@ -40,6 +40,61 @@
       toast("已录入 " + made.orders.length + " 单");
     };
 
+    // —— 成团判定 + 流团退款（文档 §四 / §五）——
+    ACT["judge-pre"] = function () {
+      var d = cur();
+      if (!d || !d.pre) { toast("先开团"); return; }
+      if (!(d.orders || []).length) { report("还没有定金单，无法判定"); return; }
+      var j = OrderModel.judgePre(d.pre, d.orders);
+      if (j.__error) { report(j.__error); return; }
+      patch("成团判定：" + j.designState + (j.partial ? "（部分成团）" : ""), { judge: j });
+      var msg = j.failed.length
+        ? "判定完成：" + j.enough.length + " 个批次成团，" + j.failed.length + " 个流团"
+        : "判定完成：全部成团";
+      toast(msg);
+    };
+
+    ACT["build-refund"] = function () {
+      var d = cur();
+      if (!d || !d.judge) { toast("先判定成团"); return; }
+      if (!d.judge.refundable.length) { toast("没有需要退款的订单"); return; }
+      var list = OrderModel.buildRefundList(d.pre, d.orders, d.judge);
+      patch("生成流团退款清单（" + list.count + " 单）", { refundList: list });
+      toast("清单已生成：应退 " + list.total + " 元（真实退款请在平台操作）");
+    };
+
+    // 标记已退款：把清单里的订单推进「退款中 → 已退款」（走状态机校验）
+    ACT["mark-refunded"] = function () {
+      var d = cur();
+      if (!d || !d.refundList || !d.refundList.rows.length) { toast("先生成退款清单"); return; }
+      var ids = {};
+      d.refundList.rows.forEach(function (r) { ids[r.anonId] = true; });
+      var events = (d.orderEvents || []).slice();
+      var changed = 0, blocked = [];
+      var orders = (d.orders || []).map(function (o) {
+        if (!ids[o.anonId]) return o;
+        var step1 = OrderModel.canTransit(o.state, "退款中");
+        if (!step1) { blocked.push(o.anonId + "（" + o.state + "）"); return o; }
+        events.push({ at: new Date().toISOString(), anonId: o.anonId, act: "流团退款",
+                      from: o.state, to: "已退款", why: "未达成团线" });
+        changed++;
+        return Object.assign({}, o, { state: "已退款" });
+      });
+      if (!changed) { report("没有可退款的订单处于合法状态。" + (blocked.length ? "受阻：" + blocked.join("、") : "")); return; }
+      patch("标记已退款 " + changed + " 单", { orders: orders, orderEvents: events });
+      toast("已退款 " + changed + " 单" + (blocked.length ? "，" + blocked.length + " 单状态不允许" : ""));
+    };
+
+    ACT["apply-design-state"] = function () {
+      var d = cur();
+      if (!d || !d.judge) { toast("先判定成团"); return; }
+      var target = d.judge.designState;
+      var from = d.designState || "预售中";
+      if (!OrderModel.canTransitDesign(from, target)) { report("款状态不允许 " + from + " → " + target); return; }
+      patch("款状态：" + from + " → " + target, { designState: target });
+      toast("款状态已改为「" + target + "」");
+    };
+
     return ACT;
   }
 

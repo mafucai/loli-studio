@@ -190,6 +190,9 @@
       pre: null,             // { batches:[{no,color,target,openedAt}], nextAnon, openedAt }
       orders: [],            // [{ anonId, realNo, color, batchNo, qty, amount, state, at }]
       orderEvents: [],       // [{ at, anonId, act, from, to, why }]  每次流转留痕
+      judge: null,           // 成团判定结果 { rows, enough, failed, designState, partial, refundable, at }
+      refundList: null,      // 流团退款清单 { rows, total, count, at }
+      designState: "",       // 款状态机（文档 §二），与订单状态机分开
       history: [{ at: new Date().toISOString(), act: "新建", from: null, to: "plan" }]
     };
   }
