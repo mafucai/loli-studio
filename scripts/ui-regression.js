@@ -27,6 +27,7 @@ var files = {
   "render.js":        "js/core/render.js",
   "render-extra.js":  "js/core/render-extra.js",
   "settings.js":      "js/core/settings.js",
+  "vote-actions.js":  "js/core/vote-actions.js",
   "actions.js":       "js/core/actions.js",
   "main.js":          "js/core/main.js"
 };
@@ -53,7 +54,7 @@ var codeOnly = (src["render.js"] + "\n" + src["render-extra.js"]).split("\n")
 assert(!/document\./.test(codeOnly), "1. 渲染层无 document.（含 code 行）");
 
 // 2. localStorage 只在 store.js
-["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","actions.js","main.js"].forEach(function (f) {
+["factory.js","render.js","render-extra.js","ai.js","router.js","settings.js","vote-actions.js","actions.js","main.js"].forEach(function (f) {
   // 排除注释
   var codeOnly = src[f].split("\n").filter(function (l) {
     var t = l.trim(); return t && !t.startsWith("*") && !t.startsWith("//");
@@ -72,23 +73,24 @@ Object.keys(src).forEach(function (f) {
   assert(lines <= 400, "4. " + f + " 行数 " + lines + " ≤ 400");
 });
 
-// 5. 九步全部注册
-["word","img","part","check","buy","look","model","fact","cost"].forEach(function (id) {
+// 5. 全部步骤注册（0 企划 + 原九步）
+["plan","word","img","vote","part","check","buy","look","model","fact","cost"].forEach(function (id) {
   assert(new RegExp("registerPage\\([\"']" + id + "[\"']").test(src["main.js"]),
     "5. main.js 注册视图 " + id);
 });
 
-// 6. Router.STEPS 有 9 步
+// 6. Router.STEPS 有 10 步
 var stepsCount = (src["router.js"].match(/\{ id: "/g) || []).length;
-assert(stepsCount === 9, "6. Router.STEPS 恰好 9 步（实际 " + stepsCount + "）");
+assert(stepsCount === 11, "6. Router.STEPS 恰好 11 步（实际 " + stepsCount + "）");
 
 // 7. 所有 data-act 都有对应处理函数
 var acts = {};
 var m;
 var regex = /\bACT\["([^"]+)"\]\s*=/g;
 while ((m = regex.exec(src["actions.js"]))) acts[m[1]] = true;
-// 设置相关动作已拆到 settings.js
+// 设置相关动作已拆到 settings.js；图透动作已拆到 vote-actions.js
 while ((m = regex.exec(src["settings.js"]))) acts[m[1]] = true;
+while ((m = regex.exec(src["vote-actions.js"]))) acts[m[1]] = true;
 // 收集 render 里出现的所有 data-act
 var usedActs = {};
 var r2 = /data-act="([^"]+)"/g;
@@ -121,13 +123,13 @@ assert(/K_C\s*=\s*"loli-studio\.cfg\.v1"/.test(src["store.js"]),    "9b. Store �
 // 10. 加载顺序依赖：index.html 加载顺序为 router→ai→factory→store→render→actions→main
 var htmlScripts = (src["index.html"].match(/src="([^"]+)"/g) || [])
   .map(function (s) { return s.match(/src="([^"]+)"/)[1]; });
-var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/actions.js","js/core/main.js"];
+var expected = ["js/core/router.js","js/core/ai.js","js/core/factory.js","js/core/store.js","js/core/render.js","js/core/render-extra.js","js/core/settings.js","js/core/vote-actions.js","js/core/actions.js","js/core/main.js"];
 // 顺序：router, ai, factory 是纯模块无依赖；store 也不依赖；render 依赖 Router/AI；actions 依赖 Store/Router/AI；main 依赖全部
 var orderIdx = {};
 expected.forEach(function (e, i) { orderIdx[e] = i; });
 var actualIdx = {};
 htmlScripts.forEach(function (s, i) { actualIdx[s] = i; });
-assert(htmlScripts.length === 9, "10a. index.html 加载 9 个脚本");
+assert(htmlScripts.length === 10, "10a. index.html 加载 10 个脚本（实际 " + htmlScripts.length + "）");
 // render.js 必须在 router.js 后
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/router.js"], "10b. render 在 router 后");
 assert(actualIdx["js/core/render.js"] > actualIdx["js/core/ai.js"],     "10c. render 在 ai 后");
@@ -156,6 +158,57 @@ assert(stepsBindCount === 1, "11b. stepsEl 只绑一次（实际 " + stepsBindCo
 
 // 14. AI mock 有 imgDataUri（不依赖 CDN）
 assert(/data:image\/svg\+xml/.test(src["ai.js"]), "14. AI.img 返回本地 SVG data URI，不依赖 CDN");
+
+// 15. 企划批（0 企划 / 柄图 / 避免词 / color 数组）
+assert(/function vPlan\s*\(/.test(src["render-extra.js"]), "15a. 企划视图 vPlan 存在");
+assert(/dat-act|data-act="pick-theme"/.test(src["render-extra.js"]), "15b. 企划页有选主题动作");
+assert(/data-act="gen-prints"/.test(src["render-extra.js"]), "15c. 企划页有生成柄图动作");
+assert(/data-act="pick-print"/.test(src["render-extra.js"]), "15d. 企划页有选柄图动作");
+assert(/data-act="save-avoid"/.test(src["render.js"]), "15e. 设计词页有保存避免词动作");
+["pick-theme","gen-prints","pick-print","save-avoid"].forEach(function (a) {
+  assert(acts[a] === true, "15f. 企划动作存在: " + a);
+});
+// 柄图未选不能进设计词：企划页 nextBtn 只在 picks 非空时输出
+assert(/picks\.length\)\s*\{\s*body \+= [\s\S]{0,200}?nextBtn\("word"/.test(src["render-extra.js"]),
+  "15g. 柄图未选时不给「下一步 · 设计词」");
+// 避免词/主题/柄图真的进 prompt：actions 里调用 buildWordPrompt
+assert(/AI\.buildWordPrompt\(/.test(src["actions.js"]), "15h. gen-words 调用 buildWordPrompt");
+assert(/avoid:\s*avoid/.test(src["actions.js"]), "15i. 避免词传入 prompt");
+assert(/theme:\s*theme/.test(src["actions.js"]), "15j. 主题传入 prompt");
+// color 数组：工厂函数存在
+assert(/function toColors\s*\(/.test(src["factory.js"]), "15k. factory.toColors 存在");
+assert(/global\.Factory[\s\S]{0,400}?toColors:\s*toColors/.test(src["factory.js"]), "15l. toColors 已导出");
+assert(/color:\s*\[pick\(COLOR\)\]/.test(src["factory.js"]), "15m. designWords 的 color 是数组");
+assert(/function colors\s*\(/.test(src["render.js"]), "15n. 渲染层有 color 兼容函数");
+// 不写死步骤字面量：用 Router.prevId 取相邻步
+assert(!/ORDER\.indexOf/.test(src["render.js"]), "15o. 渲染层不再写死 ORDER 数组");
+
+// 16. color 数组化：不在源码里做正则扫描（容易误报），改由 backcompat-test.js 实测。
+//     这里只断言「兼容函数存在且被导出」，实测交给 backcompat-test.js（含 undefined 串检查）。
+assert(/function toColors\s*\(/.test(src["factory.js"]) && /toColors:\s*toColors/.test(src["factory.js"]),
+  "16a. factory.toColors 定义并导出");
+assert(/function colors\s*\(/.test(src["render.js"]), "16b. render 层有 color 兼容函数");
+assert(/function toColorsStr\s*\(/.test(src["ai.js"]) || /toColors/.test(src["ai.js"]),
+  "16c. ai.js 有 color 兼容转换");
+
+
+// 17. 批 C：图透投票 + 改版留痕
+assert(/function vVote\s*\(/.test(src["render-extra.js"]), "17a. 图透视图 vVote 存在");
+["start-version","switch-version","vote","save-vote","pick-reason","revise-img"].forEach(function (a) {
+  assert(acts[a] === true, "17b. 图透动作存在: " + a);
+});
+assert(/data-act="switch-version"/.test(src["render-extra.js"]), "17c. 版本缩略图可切换");
+assert(/data-act="revise-img"/.test(src["render-extra.js"]), "17d. 改版入口存在");
+// 改版必须填原因
+assert(/改版必须填原因/.test(src["vote-actions.js"]), "17e. 改版强制填原因");
+// versions 只增不删：pushVersion 用 slice 复制，且无 splice/pop/shift
+assert(/function pushVersion\s*\(/.test(src["factory.js"]), "17f. pushVersion 存在");
+var pv = (src["factory.js"].match(/function pushVersion[\s\S]*?\n  \}/) || [""])[0];
+assert(pv.indexOf("slice()") >= 0, "17g. pushVersion 复制原数组（不改原引用）");
+assert(!/splice|\bpop\(|\bshift\(/.test(pv), "17h. pushVersion 不删旧版本");
+// 步骤文案不再写死
+assert(!/共 9 步/.test(src["render.js"]), "17i. 渲染层不再写死「共 9 步」");
+assert(/function stepLabel\s*\(/.test(src["render.js"]), "17j. 步骤文案从 Router.STEPS 动态取");
 
 console.log("\n——— 结果 ———");
 console.log("✅ 通过 " + ok + " 项  ❌ 失败 " + fail + " 项");

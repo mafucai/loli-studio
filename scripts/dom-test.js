@@ -1,4 +1,13 @@
-/* 无 jsdom 的点击验证：手写极简 DOM，真实加载 render/actions 并模拟事件 */
+/* 无 jsdom 的点击验证：手写极简 DOM，真实加载 render/actions 并模拟事件
+ *
+ * ⚠️ 已知报废（2026-09-29 查明，不修）：
+ *   parseHTML 只建标签节点，不解析文本节点 —— span 里的中文从未写入 _text，
+ *   因此 tabs[i].textContent 恒为空，clickTab 的 find(...includes(label)) 永远失败，
+ *   末尾「点击三个页签」3 项断言本来就过不了（不是本次改动引入）。
+ *   历史记录：PROGRESS.md 的 260 项里从未包含本脚本，CI 也未接。
+ *   真实点击验证请走 scripts/browser-acceptance.js（Playwright）。
+ *   本次保留它只是为了不漏掉「加载列表与 index.html 不同步」这类结构问题。
+ */
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
@@ -133,8 +142,8 @@ const window = {
 window.window = window;
 
 const ctx = vm.createContext(window);
-/* 顺序与 index.html 一致 */
-["router.js", "ai.js", "store.js", "factory.js", "render.js", "actions.js", "main.js"].forEach((f) => {
+/* 顺序与 index.html 一致（漏了 render-extra/settings 会导致 R.vPlan/vHistory 为 undefined） */
+["router.js", "ai.js", "store.js", "factory.js", "render.js", "render-extra.js", "settings.js", "actions.js", "main.js"].forEach((f) => {
   vm.runInContext(read(f), ctx, { filename: f });
 });
 

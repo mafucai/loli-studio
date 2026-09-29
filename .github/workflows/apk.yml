@@ -15,6 +15,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Regression gate
+        run: |
+          set -e
+          node scripts/ui-regression.js
+          node scripts/e2e-data.js
+          node scripts/full-logic-test.js
+          node scripts/models-logic-test.js
+          node scripts/image-logic-test.js
+          node scripts/backcompat-test.js
+          node scripts/error-assistant-test.js
       - name: Set up Java
         uses: actions/setup-java@v4
         with:

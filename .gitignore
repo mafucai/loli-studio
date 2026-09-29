@@ -4,3 +4,7 @@ test-results/
 __pycache__/
 node_modules/
 *.pyc
+# 备份文件（改文件前的 cp x x.bak-<日期>）不进仓库
+*.bak
+*.bak-*
+.bak-*/
