@@ -12,7 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const ROOT = "/workspace/apps/loli-studio/prototype";
+const ROOT = path.join(__dirname, "..", "prototype");
 const read = (f) => fs.readFileSync(path.join(ROOT, "js/core", f), "utf8");
 
 /* —— 极简 DOM —— */

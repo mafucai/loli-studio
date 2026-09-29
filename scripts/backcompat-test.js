@@ -1,6 +1,6 @@
 /* 后向兼容实测：老设计单（color 是单值、无 theme/prints/avoid）必须能渲染，不崩 */
 const fs=require("fs"),vm=require("vm"),path=require("path");
-const ROOT="/workspace/apps/loli-studio/prototype";
+const ROOT = path.join(__dirname, "..", "prototype");
 const read=f=>fs.readFileSync(path.join(ROOT,"js/core",f),"utf8");
 const ctx=vm.createContext({window:{},console,Date,Math,JSON,encodeURIComponent,parseInt,isNaN,String,Number,Array,Object});
 ["router.js","ai.js","factory.js","store.js","render.js","render-extra.js"].forEach(f=>vm.runInContext(read(f),ctx,{filename:f}));

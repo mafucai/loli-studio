@@ -1,6 +1,6 @@
 /* 报错助手实测：注入错误 → 看角标/面板是否真的更新（走 main.js 真实代码路径） */
 const fs=require("fs"),vm=require("vm"),path=require("path");
-const ROOT="/workspace/apps/loli-studio/prototype";
+const ROOT = path.join(__dirname, "..", "prototype");
 const read=f=>fs.readFileSync(path.join(ROOT,"js/core",f),"utf8");
 
 function el(id){return{
