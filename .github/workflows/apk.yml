@@ -21,14 +21,28 @@ jobs:
           node-version: '20'
       - name: Regression gate
         run: |
-          set -e
-          node scripts/ui-regression.js
-          node scripts/e2e-data.js
-          node scripts/full-logic-test.js
-          node scripts/models-logic-test.js
-          node scripts/image-logic-test.js
-          node scripts/backcompat-test.js
-          node scripts/error-assistant-test.js
+          set -uo pipefail
+          echo "node: $(node -v)"
+          echo "pwd : $(pwd)"
+          fail=0
+          for s in ui-regression e2e-data full-logic-test models-logic-test \
+                   image-logic-test backcompat-test error-assistant-test; do
+            echo "── $s ─────────────────────────────"
+            if [ ! -f "scripts/$s.js" ]; then
+              echo "::error::scripts/$s.js 不存在"
+              fail=1
+              continue
+            fi
+            node "scripts/$s.js"
+            rc=$?
+            echo "   ↳ $s 退出码 $rc"
+            if [ "$rc" -ne 0 ]; then fail=1; fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Regression gate 有脚本失败，不构建 APK"
+            exit 1
+          fi
+          echo "Regression gate 全部通过"
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
